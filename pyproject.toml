@@ -1,0 +1,10 @@
+[project]
+name = "just4kicks"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "gdown>=5.2.0",
+    "pymc>=5.23.0",
+]
