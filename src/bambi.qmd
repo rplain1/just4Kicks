@@ -1,0 +1,156 @@
+
+```{python}
+import bambi as bmb
+import polars as pl
+import numpy as np
+import arviz as az
+import polars as pl
+```
+
+
+```{python}
+
+df_field_goals = pl.read_csv("data/field_goal_attempts.csv")
+df_kickers = pl.read_csv("data/kickers.csv")
+
+df = (
+    df_field_goals.join(df_kickers, on="player_id")
+    .rename({"attempt_yards": "distance"})
+    .with_columns(
+        success=pl.when(pl.col("field_goal_result") == "Made")
+        .then(pl.lit(1))
+        .otherwise(pl.lit(0)),
+        player_id=pl.col("player_id").cast(pl.Utf8).cast(pl.Categorical),
+        player_name=pl.col("player_name").cast(pl.Categorical),
+        season_type=pl.col("season_type").cast(pl.Categorical),
+    )
+)
+
+df_model = df.filter(
+    (pl.col("season") <= 2017) | ((pl.col("season") == 2018) & (pl.col("week") <= 6))
+).filter(pl.col('season_type') == 'Reg')
+
+df_model_pd = df_model.to_pandas()
+
+```
+
+
+```{python}
+import bambi as bmb
+knots = np.quantile(df_model_pd["distance"], [0.25, 0.5, 0.75])
+
+priors = {
+    "bs(distance, knots=knots, intercept=False)": bmb.Prior(
+        "StudentT", nu=3, mu=0, sigma=0.5
+    ),
+    "1|player_id": bmb.Prior(
+        "StudentT", nu=3, mu=0, sigma=bmb.Prior("HalfNormal", sigma=0.5)
+    ),
+}
+
+model = bmb.Model(
+    "success ~ bs(distance, knots=knots, intercept=False) + (1 + distance | player_id)",
+    data=df_model_pd,
+    family="bernoulli",
+    priors=priors,
+)
+
+#idata = model.fit(draws=1000, chains=4, cores=1)
+```
+
+```{python}
+az.plot_trace(idata)
+```
+
+
+```{python}
+az.summary(idata)
+```
+
+```{python}
+# Create new data for predictions
+newdata = pd.DataFrame(
+    {
+        "distance": np.linspace(20, 60, 41),
+        "player_id": df_model_pd["player_id"].iloc[
+            0
+        ],  # Pick any player or create dummy
+    }
+)
+
+newdata = df_model_pd[df_model_pd['season'] == 2018][['player_id', 'player_name']].drop_duplicates().assign(key = 1).merge(pd.DataFrame({'distance': [x for x in range(20, 61)]}).assign(key = 1), on='key')
+
+
+# Get posterior predictions (linear scale)
+preds = model.predict(idata, data=newdata, inplace=False)
+
+df_pred = preds.posterior['p'].to_dataframe()
+
+newdata['__obs__'] = np.arange(newdata.shape[0])
+df_pred = df_pred.reset_index().merge(newdata, on='__obs__')
+
+
+pl.from_pandas(df_pred).group_by(['player_name', 'distance', 'draw']).agg(pl.col('p').mean())
+
+df_output = pl.from_pandas(df_pred).group_by(['player_name', 'distance', 'draw']).agg(pl.col('p').mean())
+
+df_output.write_parquet('bambi_output.parquet')
+
+```
+
+```{python}
+# Create empirical distribution of kick distances
+empirical_dist = (
+    df_model_pd[df_model_pd["season"] <= 2018]
+    .groupby("distance")
+    .size()
+    .reset_index(name="n")
+)
+empirical_dist["prob"] = empirical_dist["n"] / empirical_dist["n"].sum()
+
+np.random.seed(528)
+n_attempts_per_kicker = 25
+
+kick_attempts = np.random.choice(
+    empirical_dist["distance"],
+    size=n_attempts_per_kicker,
+    replace=True,
+    p=empirical_dist["prob"],
+)
+
+# kick_attempts = np.sort(kick_attempts) + np.random.normal(
+#     0, 0.02, n_attempts_per_kicker
+# )
+
+test_players = df_model_pd[df_model_pd["season"] == 2018][
+    ["player_id", "player_name", "season"]
+].drop_duplicates()
+
+test_players["kick_attempts"] = pd.Series(
+    [np.array(kick_attempts) for x in range(test_players.shape[0])]
+)
+test_players["kick_attempts"] = [
+    kick_attempts.tolist() for x in range(test_players.shape[0])
+]
+
+df_test = test_players.explode('kick_attempts').rename(columns={'kick_attempts':'distance'})
+
+```
+
+```{python}
+predictions = model.predict(idata, data=df_test, kind="response_params", inplace=False)
+
+idata.posterior
+```
+
+```{python}
+df_preds = predictions.posterior["p"].to_dataframe().reset_index().merge(
+    df_test[["player_id", "player_name"]].assign(__obs__ = np.arange(df_test.shape[0])),
+    on="__obs__",
+)
+```
+
+```{python}
+predictions.posterior_predictive["success"]
+df_preds.to_parquet("test.parquet")
+```

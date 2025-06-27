@@ -5,6 +5,11 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
-    "gdown>=5.2.0",
+    "numpy>=2.3.1",
+    "pandas>=2.3.0",
+    "patsy>=1.0.1",
+    "polars>=1.31.0",
+    "pyarrow>=20.0.0",
     "pymc>=5.23.0",
+    "ruff>=0.12.0",
 ]
