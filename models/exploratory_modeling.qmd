@@ -1,0 +1,423 @@
+
+```{r}
+library(tidyverse)
+library(brms)
+```
+
+Read in the data and basic preperation.
+
+```{r}
+df_fg <- read_csv('data/field_goal_attempts.csv')
+df_kickers <- read_csv('data/kickers.csv')
+
+df_fg |> glimpse()
+df_kickers |> glimpse()
+
+df <- df_fg |>
+    left_join(df_kickers)  |>
+    mutate(
+        across(c(game_date, birthdate), mdy),
+        current_age = season - year(birthdate)
+        ) |>
+    select(-birthdate)
+```
+
+```{r}
+df |>
+  group_by(season, distance = floor(attempt_yards / 2) * 2) |>
+  summarise(
+    success = sum(field_goal_result == 'Made') / n(),
+    kicks = n()
+  ) |>
+  ggplot(aes((distance), success, color = season, group = season)) +
+  geom_smooth(se = FALSE) +
+  geom_point(aes(size = kicks), alpha = 0.2)
+```
+
+Check what priors would look like with a simple model
+
+```{r}
+df$response = as.integer(df$field_goal_result == 'Made')
+```
+
+
+```{r}
+fit_re_spline <- brm(
+  #response ~ s(attempt_yards) + (1 | player_id) + (1 | season),
+  response ~ s(attempt_yards) + (1 + attempt_yards | player_id) + (1 | season),
+  family = bernoulli(),
+  data = df,
+  prior = c(
+    prior(normal(0, 5), class = "Intercept"),
+    prior(student_t(3, 0, 1), class = 'sd', group = 'player_id'),
+    prior(exponential(1), class = "sd")
+  ),
+  cores = 4,
+  chains = 4,
+  backend = "cmdstan",
+  file = 'fit_re_spline'
+) |>
+  add_criterion(criterion = 'loo')
+
+fit_re_only <- brm(
+  #response ~ s(attempt_yards) + (1 | player_id) + (1 | season),
+  response ~ (1 + attempt_yards | player_id),
+  family = bernoulli(),
+  data = df,
+  prior = c(
+    prior(normal(0, 5), class = "Intercept"),
+    prior(student_t(3, 0, 1), class = 'sd', group = 'player_id'),
+    prior(exponential(1), class = "sd")
+  ),
+  cores = 4,
+  chains = 4,
+  backend = "cmdstan",
+  file = 'fit_re_only'
+) |>
+  add_criterion(criterion = 'loo')
+
+fit_fe_spline <- brm(
+  #response ~ s(attempt_yards) + (1 | player_id) + (1 | season),
+  response ~ s(attempt_yards) + (1 | player_id) + (1 | season),
+  family = bernoulli(),
+  data = df,
+  prior = c(
+    prior(normal(0, 5), class = "Intercept"),
+    prior(student_t(3, 0, 1), class = 'sd', group = 'player_id'),
+    prior(exponential(1), class = "sd")
+  ),
+  cores = 4,
+  chains = 4,
+  backend = "cmdstan",
+  file = 'fit_fe_spline'
+) |>
+  add_criterion(criterion = 'loo')
+
+fit_fe_no_season <- brm(
+  #response ~ s(attempt_yards) + (1 | player_id) + (1 | season),
+  response ~ s(attempt_yards) + (1 | player_id),
+  family = bernoulli(),
+  data = df,
+  prior = c(
+    prior(normal(0, 5), class = "Intercept"),
+    prior(student_t(3, 0, 1), class = 'sd', group = 'player_id'),
+    prior(exponential(1), class = "sd")
+  ),
+  cores = 4,
+  chains = 4,
+  backend = "cmdstan",
+  file = 'fit_fe_no_season'
+) |>
+  add_criterion(criterion = 'loo')
+
+fir_re_spline_new <- brm(
+  #response ~ s(attempt_yards) + (1 | player_id) + (1 | season),
+  response ~
+    s(attempt_yards, by = player_id, bs = 'fs') +
+      (1 | player_id),
+  family = bernoulli(),
+  data = df,
+  prior = c(
+    prior(normal(0, 5), class = "Intercept"),
+    prior(student_t(3, 0, 1), class = 'sd', group = 'player_id'),
+    prior(exponential(1), class = "sd")
+  ),
+  cores = 4,
+  chains = 4,
+  backend = "cmdstan",
+  #file = 'fir_re_spline_new'
+) |>
+  add_criterion(criterion = 'loo', overwrite = TRUE)
+
+
+```
+
+```{r}
+loo_compare(
+  fit_re_spline,
+  fit_re_only,
+  fit_fe_spline,
+  fit_fe_no_season,
+  fir_re_spline_new
+)
+```
+
+
+```{r}
+.df1 <- df |>
+  filter(season_type == 'Reg') |>
+  #filter(field_goal_result != 'Blocked') |>
+  filter(season == 2018) |>
+  distinct(season, player_id, player_name) |>
+  mutate(
+    attempt_yards = list(25:65),
+    model='random effects'
+  ) |>
+  unnest(attempt_yards) |>
+  add_epred_draws(fit) |>
+  ungroup()
+
+.df2 <- df |>
+  filter(season_type == 'Reg') |>
+  #filter(field_goal_result != 'Blocked') |>
+  filter(season == 2018) |>
+  distinct(season, player_id, player_name) |>
+  mutate(
+    attempt_yards = list(25:65),
+    model = 'fixed effects'
+  ) |>
+  unnest(attempt_yards) |>
+  add_epred_draws(fit_fe_w_spline) |>
+  ungroup()
+
+.df <- .df1 |> bind_rows(.df2)
+
+.df |>
+  summarise(.epred = median(.epred), .by = c(player_name, attempt_yards, model)) |>
+  ggplot(aes(attempt_yards, .epred)) +
+  geom_line(aes(color = model)) +
+  facet_wrap(~player_name)
+```
+
+
+```{r}
+library(tidybayes)
+# tidybayes to get expected probs per kick
+df_draws <- df |>
+  filter(season_type == 'Reg') |>
+  #filter(field_goal_result != 'Blocked') |>
+  filter(season == 2018) |>
+  add_epred_draws(fit_fe_no_season, re_formula = NA, allow_new_levels = TRUE) # remove kicker effect to get "average kicker"
+
+df_goe <- df_draws |>
+  mutate(residual = response - .epred) |>
+  group_by(.draw, player_id, player_name) |>
+  summarise(goe = sum(residual), .groups = "drop")
+
+# summarize per kicker
+df_goe_summary <- df_goe |>
+  group_by(player_id, player_name) |>
+  median_qi(goe) |>
+  ungroup() |>
+  arrange(-goe)
+
+```
+
+
+
+```{r}
+df_goe |>
+  #filter(player_id %in% df_goe_summary[c(1:10, 117:127), ]$player_id) |>
+  ggplot(aes(goe, reorder(player_name, goe), color = player_name == 'JUSTIN TUCKER')) +
+  stat_halfeye() +
+  labs(
+    y = NULL
+  ) +
+  scale_color_manual(values = c('grey', 'firebrick')) +
+  theme_bw() +
+  theme(legend.position = 'none')
+```
+
+FGOE I think contextualizes replacement level better. negative values = bad, 0 = replacement, positive is good.
+
+```{r}
+df |>
+  filter(
+    season == 2018,
+    #player_name %in% c('JUSTIN TUCKER', 'MATT PRATER')
+  ) |>
+  distinct(season, player_id, player_name) |>
+  mutate(
+    attempt_yards = list(25:65)
+  ) |>
+  unnest(col = attempt_yards) |>
+  add_epred_draws(fit_fe_no_season, allow_new_levels = TRUE) |>
+  group_by(player_id, player_name, .draw) |>
+  summarise(
+    expected_makes = sum(.epred),
+    .groups = "drop"
+  ) -> df_2018
+
+df_2018 |>
+  group_by(player_name, player_id) |>
+  summarise(
+    rating = mean(expected_makes),
+    .lower = quantile(expected_makes, 0.1),
+    .upper = quantile(expected_makes, 0.9),
+    .groups = "drop"
+  ) |>
+  arrange(desc(rating)) |>
+  mutate(rank = row_number())
+
+df_2018 |>
+  ggplot(aes(expected_makes, reorder(player_name, expected_makes))) +
+  stat_pointinterval()
+```
+
+
+
+looking at latent skill
+
+
+```{r}
+df_skill <- fit_fe_no_season |>
+  as_draws_df() |>
+  select(starts_with('r_player')) |>
+  pivot_longer(everything()) |>
+  mutate(player_id = str_extract(name, '\\d+') |> as.numeric()) |>
+  left_join(df |> distinct(player_id, player_name))
+
+df_skill |>
+  filter(
+    player_id %in% (df |> filter(season == 2018) |> pull(player_id) |> unique())
+  ) |>
+  ggplot(aes(value, reorder(player_name, value))) +
+  stat_halfeye()
+
+
+```
+
+
+```{r}
+df_skill_summary <- df_skill |>
+  filter(player_id %in% df[df$season == 2018, ]$player_id) |>
+  group_by(player_id, player_name) |>
+  summarise(
+    rating = mean(value),
+    .groups = "drop"
+  )
+
+min_rating <- min(df_skill$value)
+max_rating <- max(df_skill$value)
+
+df_skill <- df_skill |>
+  mutate(
+    rating_index = 100 * (value - min_rating) / (max_rating - min_rating)
+  )
+
+df_skill |>
+  filter(player_id %in% df[df$season == 2018, ]$player_id) |>
+  ggplot(aes(value, reorder(player_name, value))) +
+  stat_pointinterval()
+
+df_skill |>
+  filter(player_id %in% df[df$season == 2018, ]$player_id) |>
+  group_by(player_name) |>
+  median_hdci(value, .width = .97) |>
+  arrange(-value)
+```
+
+## THIS IS PROMISING
+
+```{r}
+
+weights <- df |>
+  count(attempt_yards) |>
+  mutate(perc = n/sum(n))
+
+set.seed(527)
+distances <- sample(weights$attempt_yards, 100, replace = TRUE, prob = weights$perc)
+
+df_grid <- df |>
+  filter(season_type == 'Reg') |>
+  #filter(field_goal_result != 'Blocked') |>
+  filter(season == 2018) |>
+  distinct(season, player_id, player_name) |>
+  mutate(
+    attempt_yards = list(20:65),
+  ) |>
+  unnest(attempt_yards)
+
+avg_draws <- df_grid |>
+  distinct(season, attempt_yards) |>
+  add_epred_draws(fit_fe_w_spline, re_formula = NA) |>
+  ungroup() #|>
+#summarise(.epred = mean(.epred), .by = c(attempt_yards))
+
+pred_draws <- df_grid |>
+  add_epred_draws(fit_fe_w_spline, re_formula = NULL) |>
+  ungroup()
+
+
+df_fgoe <- pred_draws |>
+  left_join(avg_draws, by = c('.draw', 'attempt_yards')) |>
+  mutate(diff = .epred.x - .epred.y) |>
+  summarise(
+    fgoe = sum(diff),
+    .by = c(.draw, player_id, player_name)
+  )
+
+
+top5.fgoe <- df_fgoe |>
+  group_by(.draw) |>
+  mutate(draw_rank = rank(-fgoe, ties.method = "min")) |>
+  ungroup() |>
+  summarise(top5 = mean(draw_rank <= 5), .by = player_name) |>
+  arrange(-top5)
+
+
+
+leaderboard <- df_fgoe |>
+  group_by(player_id, player_name) |>
+  median_hdci(fgoe) |>
+  arrange(-fgoe) |>
+  mutate(rank = rank(desc(fgoe)))
+
+df_fgoe |>
+  ggplot(aes(fgoe, reorder(player_name, fgoe))) +
+  stat_pointinterval() +
+  geom_vline(xintercept = 0, linetype = 'dashed') +
+  theme_bw(base_size = 12) +
+  theme() +
+  labs(
+    x = 'FGOE',
+    y = NULL,
+    title = 'Field Goals over Expected',
+    subtitle = 'Posterior distirbution of FGOE on a standard set of kicks from distance 20-60 yards'
+  )
+
+ggsave('img/fgoe_plot.png', width = )
+
+df_fgoe |>
+  ggplot(aes(fgoe)) +
+  stat_slab(color = 'black', aes(group = player_name), fill = NA)
+
+
+pred_draws %>%
+  filter(player_name %in% c('JUSTIN TUCKER', 'DANIEL CARLSON')) |>
+  ggplot(aes(x = attempt_yards, y = .epred, color = player_name)) +
+  stat_lineribbon(alpha = 0.5) +
+  #facet_wrap(~player_name) +
+  labs(
+    title = "Kicker-Specific Field Goal Probabilities by Distance",
+    y = "P(Make)",
+    x = "Attempt Distance (yards)",
+    fill = NULL,
+    color = 'Player'
+  ) +
+  theme_minimal() +
+  scale_fill_brewer(palette = 'Greys', guide = 'none') +
+  scale_color_manual(values = c("#241773", "#A71930")) +
+  theme(legend.position = 'top')
+
+```
+
+```{r}
+leaderboard |>
+  left_join(
+    df_goe |>
+      group_by(player_name) |>
+      median_hdci(goe) |>
+      mutate(rank = rank(desc(goe))) |>
+      arrange(rank) |>
+      select(player_name, analytic_rank = rank),
+    by = c('player_name')
+  ) |>
+  ggplot(aes(analytic_rank, rank)) +
+  geom_point() +
+  ggrepel::geom_text_repel(aes(label = player_name)) +
+  scale_x_reverse() +
+  scale_y_reverse() +
+  geom_abline()
+
+```

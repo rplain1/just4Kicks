@@ -1,0 +1,1032 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" lang="en" xml:lang="en"><head>
+
+<meta charset="utf-8">
+<meta name="generator" content="quarto-1.3.450">
+
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+
+
+<title>bambi</title>
+<style>
+code{white-space: pre-wrap;}
+span.smallcaps{font-variant: small-caps;}
+div.columns{display: flex; gap: min(4vw, 1.5em);}
+div.column{flex: auto; overflow-x: auto;}
+div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+ul.task-list{list-style: none;}
+ul.task-list li input[type="checkbox"] {
+  width: 0.8em;
+  margin: 0 0.8em 0.2em -1em; /* quarto-specific, see https://github.com/quarto-dev/quarto-cli/issues/4556 */ 
+  vertical-align: middle;
+}
+/* CSS for syntax highlighting */
+pre > code.sourceCode { white-space: pre; position: relative; }
+pre > code.sourceCode > span { display: inline-block; line-height: 1.25; }
+pre > code.sourceCode > span:empty { height: 1.2em; }
+.sourceCode { overflow: visible; }
+code.sourceCode > span { color: inherit; text-decoration: inherit; }
+div.sourceCode { margin: 1em 0; }
+pre.sourceCode { margin: 0; }
+@media screen {
+div.sourceCode { overflow: auto; }
+}
+@media print {
+pre > code.sourceCode { white-space: pre-wrap; }
+pre > code.sourceCode > span { text-indent: -5em; padding-left: 5em; }
+}
+pre.numberSource code
+  { counter-reset: source-line 0; }
+pre.numberSource code > span
+  { position: relative; left: -4em; counter-increment: source-line; }
+pre.numberSource code > span > a:first-child::before
+  { content: counter(source-line);
+    position: relative; left: -1em; text-align: right; vertical-align: baseline;
+    border: none; display: inline-block;
+    -webkit-touch-callout: none; -webkit-user-select: none;
+    -khtml-user-select: none; -moz-user-select: none;
+    -ms-user-select: none; user-select: none;
+    padding: 0 4px; width: 4em;
+  }
+pre.numberSource { margin-left: 3em;  padding-left: 4px; }
+div.sourceCode
+  {   }
+@media screen {
+pre > code.sourceCode > span > a:first-child::before { text-decoration: underline; }
+}
+</style>
+
+
+<script src="bambi_files/libs/clipboard/clipboard.min.js"></script>
+<script src="bambi_files/libs/quarto-html/quarto.js"></script>
+<script src="bambi_files/libs/quarto-html/popper.min.js"></script>
+<script src="bambi_files/libs/quarto-html/tippy.umd.min.js"></script>
+<script src="bambi_files/libs/quarto-html/anchor.min.js"></script>
+<link href="bambi_files/libs/quarto-html/tippy.css" rel="stylesheet">
+<link href="bambi_files/libs/quarto-html/quarto-syntax-highlighting.css" rel="stylesheet" id="quarto-text-highlighting-styles">
+<script src="bambi_files/libs/bootstrap/bootstrap.min.js"></script>
+<link href="bambi_files/libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
+<link href="bambi_files/libs/bootstrap/bootstrap.min.css" rel="stylesheet" id="quarto-bootstrap" data-mode="light">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.6/require.min.js" integrity="sha512-c3Nl8+7g4LMSTdrm621y7kf9v3SDPnhxLNhcjFJbKECVnmZHTdo+IRO05sNLTH/D3vA6u1X32ehoLC7WFVdheg==" crossorigin="anonymous"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.5.1/jquery.min.js" integrity="sha512-bLT0Qm9VnAYZDflyKcBaQ2gg0hSYNQrJ8RilYldYQ1FxQYoCLtUjuuRuZo+fjqhx/qtq/1itJ0C2ejDxltZVFg==" crossorigin="anonymous"></script>
+<script type="application/javascript">define('jquery', [],function() {return window.jQuery;})</script>
+<script src="https://unpkg.com/@jupyter-widgets/html-manager@*/dist/embed-amd.js" crossorigin="anonymous"></script>
+
+
+</head>
+
+<body class="fullcontent">
+
+<div id="quarto-content" class="page-columns page-rows-contents page-layout-article">
+
+<main class="content" id="quarto-document-content">
+
+<header id="title-block-header" class="quarto-title-block default">
+<div class="quarto-title">
+<h1 class="title">Overview</h1>
+</div>
+
+
+
+<div class="quarto-title-meta">
+
+    
+  
+    
+  </div>
+  
+
+</header>
+
+<div class="cell" data-execution_count="1">
+<details>
+<summary>Code</summary>
+<div class="sourceCode cell-code" id="cb1"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> bambi <span class="im">as</span> bmb</span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> polars <span class="im">as</span> pl</span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> numpy <span class="im">as</span> np</span>
+<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> arviz <span class="im">as</span> az</span>
+<span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> polars <span class="im">as</span> pl</span>
+<span id="cb1-6"><a href="#cb1-6" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> bambi <span class="im">as</span> bmb</span>
+<span id="cb1-7"><a href="#cb1-7" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> pandas <span class="im">as</span> pd</span>
+<span id="cb1-8"><a href="#cb1-8" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> seaborn <span class="im">as</span> sns</span>
+<span id="cb1-9"><a href="#cb1-9" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> matplotlib.pyplot <span class="im">as</span> plt</span>
+<span id="cb1-10"><a href="#cb1-10" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-11"><a href="#cb1-11" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> utils <span class="im">import</span> (</span>
+<span id="cb1-12"><a href="#cb1-12" aria-hidden="true" tabindex="-1"></a>    create_grid,</span>
+<span id="cb1-13"><a href="#cb1-13" aria-hidden="true" tabindex="-1"></a>    create_leaderboard,</span>
+<span id="cb1-14"><a href="#cb1-14" aria-hidden="true" tabindex="-1"></a>    plot_fgoe,</span>
+<span id="cb1-15"><a href="#cb1-15" aria-hidden="true" tabindex="-1"></a>    prep_data,</span>
+<span id="cb1-16"><a href="#cb1-16" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb1-17"><a href="#cb1-17" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-18"><a href="#cb1-18" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> great_tables <span class="im">import</span> GT, md, html</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</details>
+</div>
+<p><a href="#model-setup">Model Setup</a> <a href="#regular-field-goal-over-expected-(fgoe)">Regular FOEE</a> <a href="#simulated-fgoe">Simulated FGOE</a> <a href="#leaderboard">Leaderboard</a></p>
+<p>This is a notebook that flows linearly the thoughts and ideas I have about the project. I’ve included other code, and there was several iterations of model testing done before converging on this flow.</p>
+<div class="cell" data-execution_count="2">
+<div class="sourceCode cell-code" id="cb2"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a>df <span class="op">=</span> prep_data()</span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a>df_model_pd <span class="op">=</span> df.<span class="bu">filter</span>(pl.col(<span class="st">'season_type'</span>) <span class="op">==</span> <span class="st">'Reg'</span>).to_pandas()</span>
+<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a>df.glimpse()</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>Rows: 10866
+Columns: 13
+$ season            &lt;i64&gt; 2010, 2010, 2010, 2010, 2010, 2010, 2010, 2010, 2010, 2010
+$ season_type       &lt;cat&gt; Pre, Pre, Pre, Pre, Pre, Pre, Pre, Pre, Pre, Pre
+$ week              &lt;i64&gt; 1, 1, 1, 1, 2, 2, 2, 2, 2, 2
+$ game_date         &lt;str&gt; '8/8/2010', '8/8/2010', '8/8/2010', '8/8/2010', '8/12/2010', '8/12/2010', '8/12/2010', '8/12/2010', '8/12/2010', '8/12/2010'
+$ game_key          &lt;i64&gt; 55073, 55073, 55073, 55073, 55076, 55074, 55075, 55074, 55076, 55074
+$ play_id           &lt;i64&gt; 433, 2661, 2772, 1604, 3086, 1496, 3689, 4032, 2082, 2038
+$ play_sequence     &lt;i64&gt; 17, 104, 109, 64, 123, 61, 152, 162, 81, 83
+$ player_id         &lt;cat&gt; 34623, 34623, 34623, 34623, 34623, 10114, 33337, 10114, 34623, 26127
+$ field_goal_result &lt;str&gt; 'Made', 'Missed', 'Made', 'Made', 'Made', 'Made', 'Made', 'Made', 'Made', 'Missed'
+$ distance          &lt;i64&gt; 20, 49, 23, 34, 28, 37, 23, 45, 27, 50
+$ player_name       &lt;cat&gt; DAVID BUEHLER, DAVID BUEHLER, DAVID BUEHLER, DAVID BUEHLER, DAVID BUEHLER, JOHN KASAY, GARRETT HARTLEY, JOHN KASAY, DAVID BUEHLER, SHAYNE GRAHAM
+$ birthdate         &lt;str&gt; '2/5/1987', '2/5/1987', '2/5/1987', '2/5/1987', '2/5/1987', '10/27/1969', '5/16/1986', '10/27/1969', '2/5/1987', '12/9/1977'
+$ success           &lt;i32&gt; 1, 0, 1, 1, 1, 1, 1, 1, 1, 0
+</code></pre>
+</div>
+</div>
+<p>With the data, the main field that stand out that would be relevant are <code>attempt_yards</code>. Other useful information that could be derived are seasonal effects, age, and differences between regular and preseason.</p>
+<p>Included in <code>R/exploratory_modeling.qmd</code>, I iterated on different model types - striking a blend between model complexity and performance. The models were tested with leave-one-out (LOO) cross-validation for Bayesian models using Pareto smoothed importance sampling.<a href="#fn1" class="footnote-ref" id="fnref1" role="doc-noteref"><sup>1</sup></a></p>
+<p>Players possess varying skill levels that cannot be fully captured through traditional analytics alone. The sparse nature of the available data, combined with the hierarchical structure of the data-generating process, makes this an ideal application for hierarchical modeling approaches.</p>
+<p>Assumptions this is built on:</p>
+<ul>
+<li>This is the initial request. The focus is to start effective but simple, and build working with support from scouting teams and other functional areas within the org.</li>
+<li>Explainability is preferred.</li>
+</ul>
+<section id="model-setup" class="level3">
+<h3 class="anchored" data-anchor-id="model-setup">Model Setup</h3>
+<p>A powerful yet simple model will be use:</p>
+<pre><code>(success | 1) ~ (1 | player_id) + s(distance)</code></pre>
+<p>More detaile below, but the high level overview: - Bernoulli likelihood for binary event - Partially pooled intercepts for each player - applying a spline to the distance</p>
+<div class="cell" data-execution_count="3">
+<div class="sourceCode cell-code" id="cb5"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a>s <span class="op">=</span> <span class="st">"bs(distance, df=4, intercept=False)"</span></span>
+<span id="cb5-2"><a href="#cb5-2" aria-hidden="true" tabindex="-1"></a>priors <span class="op">=</span> {</span>
+<span id="cb5-3"><a href="#cb5-3" aria-hidden="true" tabindex="-1"></a>    s: bmb.Prior(<span class="st">"StudentT"</span>, nu<span class="op">=</span><span class="dv">3</span>, mu<span class="op">=</span><span class="dv">0</span>, sigma<span class="op">=</span><span class="fl">0.5</span>),</span>
+<span id="cb5-4"><a href="#cb5-4" aria-hidden="true" tabindex="-1"></a>    <span class="st">"1|player_id"</span>: bmb.Prior(</span>
+<span id="cb5-5"><a href="#cb5-5" aria-hidden="true" tabindex="-1"></a>        <span class="st">"StudentT"</span>, nu<span class="op">=</span><span class="dv">3</span>, mu<span class="op">=</span><span class="dv">0</span>, sigma<span class="op">=</span>bmb.Prior(<span class="st">"HalfNormal"</span>, sigma<span class="op">=</span><span class="fl">0.5</span>)</span>
+<span id="cb5-6"><a href="#cb5-6" aria-hidden="true" tabindex="-1"></a>    ),</span>
+<span id="cb5-7"><a href="#cb5-7" aria-hidden="true" tabindex="-1"></a>}</span>
+<span id="cb5-8"><a href="#cb5-8" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb5-9"><a href="#cb5-9" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb5-10"><a href="#cb5-10" aria-hidden="true" tabindex="-1"></a>model <span class="op">=</span> bmb.Model(</span>
+<span id="cb5-11"><a href="#cb5-11" aria-hidden="true" tabindex="-1"></a>    <span class="ss">f"success ~ (1|player_id) + </span><span class="sc">{</span>s<span class="sc">}</span><span class="ss">"</span>,</span>
+<span id="cb5-12"><a href="#cb5-12" aria-hidden="true" tabindex="-1"></a>    data<span class="op">=</span>df_model_pd,</span>
+<span id="cb5-13"><a href="#cb5-13" aria-hidden="true" tabindex="-1"></a>    family<span class="op">=</span><span class="st">"bernoulli"</span>,</span>
+<span id="cb5-14"><a href="#cb5-14" aria-hidden="true" tabindex="-1"></a>    priors<span class="op">=</span>priors,</span>
+<span id="cb5-15"><a href="#cb5-15" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb5-16"><a href="#cb5-16" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb5-17"><a href="#cb5-17" aria-hidden="true" tabindex="-1"></a>model</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="35">
+<pre><code>       Formula: success ~ (1|player_id) + bs(distance, df=4, intercept=False)
+        Family: bernoulli
+          Link: p = logit
+  Observations: 8383
+        Priors: 
+    target = p
+        Common-level effects
+            Intercept ~ Normal(mu: 0.0, sigma: 1.5)
+            bs(distance, df=4, intercept=False) ~ StudentT(nu: 3.0, mu: 0.0, sigma: 0.5)
+        
+        Group-level effects
+            1|player_id ~ StudentT(nu: 3.0, mu: 0.0, sigma: HalfNormal(sigma: 0.5))</code></pre>
+</div>
+</div>
+<p>This model generates player-specific intercepts that adapt based on individual performance and data availability. Players with more observations will have their estimates pulled toward their own performance, while those with limited data will remain closer to the population prior. The shared variance across all players is shared to create partial pooling. This shared information between players and prior help improve estimates for those with limited data.</p>
+<div class="cell" data-execution_count="4">
+<div class="sourceCode cell-code" id="cb7"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a><span class="co"># spline caused issue with multiprocessing, too much to debug for a weekend</span></span>
+<span id="cb7-2"><a href="#cb7-2" aria-hidden="true" tabindex="-1"></a>idata <span class="op">=</span> model.fit(draws<span class="op">=</span><span class="dv">1000</span>, chains<span class="op">=</span><span class="dv">4</span>, cores<span class="op">=</span><span class="dv">1</span>)</span>
+<span id="cb7-3"><a href="#cb7-3" aria-hidden="true" tabindex="-1"></a>az.plot_trace(idata)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-stderr">
+<pre><code>Modeling the probability that success==1
+Initializing NUTS using jitter+adapt_diag...
+Sequential sampling (4 chains in 1 job)
+NUTS: [Intercept, bs(distance, df=4, intercept=False), 1|player_id_sigma, 1|player_id_offset]
+Sampling 4 chains for 1_000 tune and 1_000 draw iterations (4_000 + 4_000 draws total) took 51 seconds.</code></pre>
+</div>
+<div class="cell-output cell-output-display">
+<script type="application/vnd.jupyter.widget-view+json">
+{"model_id":"83db5596547f470aad90f3e561c73c2b","version_major":2,"version_minor":0,"quarto_mimetype":"application/vnd.jupyter.widget-view+json"}
+</script>
+</div>
+<div class="cell-output cell-output-display">
+<pre style="white-space:pre;overflow-x:auto;line-height:normal;font-family:Menlo,'DejaVu Sans Mono',consolas,'Courier New',monospace"></pre>
+</div>
+<div class="cell-output cell-output-display" data-execution_count="36">
+<pre><code>array([[&lt;Axes: title={'center': 'Intercept'}&gt;,
+        &lt;Axes: title={'center': 'Intercept'}&gt;],
+       [&lt;Axes: title={'center': 'bs(distance, df=4, intercept=False)'}&gt;,
+        &lt;Axes: title={'center': 'bs(distance, df=4, intercept=False)'}&gt;],
+       [&lt;Axes: title={'center': '1|player_id_sigma'}&gt;,
+        &lt;Axes: title={'center': '1|player_id_sigma'}&gt;],
+       [&lt;Axes: title={'center': '1|player_id'}&gt;,
+        &lt;Axes: title={'center': '1|player_id'}&gt;]], dtype=object)</code></pre>
+</div>
+<div class="cell-output cell-output-display">
+<p><img src="bambi_files/figure-html/cell-5-output-5.png" class="img-fluid"></p>
+</div>
+</div>
+<p>It’s important in Bayesian models to check the diagnostics. This doesn’t account for causality or any of the domain specific modeling checks, but ensures that the MCMC algorithm is working as expected. All chains converged without divergent transitions, effective sample size is strong.</p>
+<section id="spline" class="level4">
+<h4 class="anchored" data-anchor-id="spline">Spline</h4>
+<div class="cell" data-execution_count="5">
+<div class="sourceCode cell-code" id="cb10"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb10-1"><a href="#cb10-1" aria-hidden="true" tabindex="-1"></a>az.summary(idata, var_names<span class="op">=</span>[<span class="st">"Intercept"</span>, s])</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="37">
+<div>
+
+
+<table class="dataframe table table-sm table-striped small" data-quarto-postprocess="true" data-border="1">
+<thead>
+<tr class="header">
+<th data-quarto-table-cell-role="th"></th>
+<th data-quarto-table-cell-role="th">mean</th>
+<th data-quarto-table-cell-role="th">sd</th>
+<th data-quarto-table-cell-role="th">hdi_3%</th>
+<th data-quarto-table-cell-role="th">hdi_97%</th>
+<th data-quarto-table-cell-role="th">mcse_mean</th>
+<th data-quarto-table-cell-role="th">mcse_sd</th>
+<th data-quarto-table-cell-role="th">ess_bulk</th>
+<th data-quarto-table-cell-role="th">ess_tail</th>
+<th data-quarto-table-cell-role="th">r_hat</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td data-quarto-table-cell-role="th">Intercept</td>
+<td>4.030</td>
+<td>0.333</td>
+<td>3.439</td>
+<td>4.698</td>
+<td>0.006</td>
+<td>0.006</td>
+<td>3582.0</td>
+<td>2468.0</td>
+<td>1.0</td>
+</tr>
+<tr class="even">
+<td data-quarto-table-cell-role="th">bs(distance, df=4, intercept=False)[0]</td>
+<td>-0.197</td>
+<td>0.461</td>
+<td>-1.096</td>
+<td>0.669</td>
+<td>0.008</td>
+<td>0.008</td>
+<td>3641.0</td>
+<td>2575.0</td>
+<td>1.0</td>
+</tr>
+<tr class="odd">
+<td data-quarto-table-cell-role="th">bs(distance, df=4, intercept=False)[1]</td>
+<td>-3.701</td>
+<td>0.439</td>
+<td>-4.547</td>
+<td>-2.909</td>
+<td>0.008</td>
+<td>0.007</td>
+<td>3368.0</td>
+<td>2966.0</td>
+<td>1.0</td>
+</tr>
+<tr class="even">
+<td data-quarto-table-cell-role="th">bs(distance, df=4, intercept=False)[2]</td>
+<td>-3.035</td>
+<td>0.569</td>
+<td>-4.064</td>
+<td>-1.940</td>
+<td>0.010</td>
+<td>0.010</td>
+<td>3281.0</td>
+<td>2478.0</td>
+<td>1.0</td>
+</tr>
+<tr class="odd">
+<td data-quarto-table-cell-role="th">bs(distance, df=4, intercept=False)[3]</td>
+<td>-7.959</td>
+<td>1.064</td>
+<td>-9.888</td>
+<td>-5.872</td>
+<td>0.017</td>
+<td>0.017</td>
+<td>4001.0</td>
+<td>3019.0</td>
+<td>1.0</td>
+</tr>
+</tbody>
+</table>
+
+</div>
+</div>
+</div>
+<div class="cell" data-execution_count="6">
+<details>
+<summary>Code</summary>
+<div class="sourceCode cell-code" id="cb11"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb11-1"><a href="#cb11-1" aria-hidden="true" tabindex="-1"></a>idata.posterior[s].to_dataframe()</span>
+<span id="cb11-2"><a href="#cb11-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb11-3"><a href="#cb11-3" aria-hidden="true" tabindex="-1"></a>w <span class="op">=</span> idata.posterior[s].mean((<span class="st">"chain"</span>, <span class="st">"draw"</span>)).values</span>
+<span id="cb11-4"><a href="#cb11-4" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb11-5"><a href="#cb11-5" aria-hidden="true" tabindex="-1"></a>spline_basis <span class="op">=</span> pd.DataFrame(model.components[<span class="st">"p"</span>].design.common[s])</span>
+<span id="cb11-6"><a href="#cb11-6" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb11-7"><a href="#cb11-7" aria-hidden="true" tabindex="-1"></a>df_spline <span class="op">=</span> (spline_basis <span class="op">*</span> w.T).assign(distance <span class="op">=</span> df_model_pd[<span class="st">'distance'</span>]).melt(<span class="st">"distance"</span>, var_name<span class="op">=</span><span class="st">"basis_idx"</span>, value_name<span class="op">=</span><span class="st">"value"</span>).assign(basis_idx <span class="op">=</span> <span class="kw">lambda</span> x: x[<span class="st">'basis_idx'</span>].astype(<span class="bu">str</span>)).query(<span class="st">'distance &gt; 20'</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</details>
+</div>
+<div class="cell" data-execution_count="7">
+<div class="sourceCode cell-code" id="cb12"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb12-1"><a href="#cb12-1" aria-hidden="true" tabindex="-1"></a>sns.lineplot(df_spline, x<span class="op">=</span><span class="st">'distance'</span>, y<span class="op">=</span><span class="st">'value'</span>, hue<span class="op">=</span><span class="st">'basis_idx'</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="39">
+<pre><code>&lt;Axes: xlabel='distance', ylabel='value'&gt;</code></pre>
+</div>
+<div class="cell-output cell-output-display">
+<p><img src="bambi_files/figure-html/cell-8-output-2.png" class="img-fluid"></p>
+</div>
+</div>
+<p>Combining them together produces the estimated effect</p>
+<div class="cell" data-execution_count="8">
+<div class="sourceCode cell-code" id="cb14"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb14-1"><a href="#cb14-1" aria-hidden="true" tabindex="-1"></a>sns.lineplot(df_spline.groupby(<span class="st">"distance"</span>)[<span class="st">"value"</span>].mean())</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="40">
+<pre><code>&lt;Axes: xlabel='distance', ylabel='value'&gt;</code></pre>
+</div>
+<div class="cell-output cell-output-display">
+<p><img src="bambi_files/figure-html/cell-9-output-2.png" class="img-fluid"></p>
+</div>
+</div>
+</section>
+</section>
+<section id="regular-field-goal-over-expected-fgoe" class="level3">
+<h3 class="anchored" data-anchor-id="regular-field-goal-over-expected-fgoe">Regular Field Goal Over Expected (FGOE)</h3>
+<p>What I outlined in my application was to establish at minimum a Field Goal Over Expected model. This contextualizes the kick, and helps identify players over or underperforming relative to expectation. This is used across multiple sports because the metric is intuitive and easily digestable. Especially coming from a background with less analytical training.</p>
+<div class="cell" data-execution_count="9">
+<div class="sourceCode cell-code" id="cb16"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb16-1"><a href="#cb16-1" aria-hidden="true" tabindex="-1"></a>df_2018 <span class="op">=</span> df_model_pd[df_model_pd[<span class="st">"season"</span>] <span class="op">==</span> <span class="dv">2018</span>]</span>
+<span id="cb16-2"><a href="#cb16-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb16-3"><a href="#cb16-3" aria-hidden="true" tabindex="-1"></a>df_goe <span class="op">=</span> model.predict(idata, data<span class="op">=</span>df_2018, inplace<span class="op">=</span><span class="va">False</span>)</span>
+<span id="cb16-4"><a href="#cb16-4" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb16-5"><a href="#cb16-5" aria-hidden="true" tabindex="-1"></a>idata_fgoe <span class="op">=</span> (</span>
+<span id="cb16-6"><a href="#cb16-6" aria-hidden="true" tabindex="-1"></a>    df_goe[<span class="st">"posterior"</span>][<span class="st">"p"</span>]</span>
+<span id="cb16-7"><a href="#cb16-7" aria-hidden="true" tabindex="-1"></a>    .to_dataframe()</span>
+<span id="cb16-8"><a href="#cb16-8" aria-hidden="true" tabindex="-1"></a>    .reset_index()</span>
+<span id="cb16-9"><a href="#cb16-9" aria-hidden="true" tabindex="-1"></a>    .merge(df_2018.assign(__obs__<span class="op">=</span><span class="kw">lambda</span> x: np.arange(x.shape[<span class="dv">0</span>])), on<span class="op">=</span><span class="st">"__obs__"</span>)</span>
+<span id="cb16-10"><a href="#cb16-10" aria-hidden="true" tabindex="-1"></a>    .assign(fgoe<span class="op">=</span><span class="kw">lambda</span> x: x[<span class="st">"success"</span>] <span class="op">-</span> x[<span class="st">"p"</span>])[</span>
+<span id="cb16-11"><a href="#cb16-11" aria-hidden="true" tabindex="-1"></a>        [<span class="st">"chain"</span>, <span class="st">"draw"</span>, <span class="st">"fgoe"</span>, <span class="st">"player_name"</span>, <span class="st">"__obs__"</span>]</span>
+<span id="cb16-12"><a href="#cb16-12" aria-hidden="true" tabindex="-1"></a>    ]</span>
+<span id="cb16-13"><a href="#cb16-13" aria-hidden="true" tabindex="-1"></a>    .groupby([<span class="st">"chain"</span>, <span class="st">"draw"</span>, <span class="st">"player_name"</span>], observed<span class="op">=</span><span class="va">True</span>)</span>
+<span id="cb16-14"><a href="#cb16-14" aria-hidden="true" tabindex="-1"></a>    .agg({<span class="st">"fgoe"</span>: <span class="st">"sum"</span>})</span>
+<span id="cb16-15"><a href="#cb16-15" aria-hidden="true" tabindex="-1"></a>    .to_xarray()</span>
+<span id="cb16-16"><a href="#cb16-16" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb16-17"><a href="#cb16-17" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb16-18"><a href="#cb16-18" aria-hidden="true" tabindex="-1"></a>plot_fgoe(idata_fgoe, <span class="st">"Field Goal Over Expected (FGOE) by Player - Blocks Removed"</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="41">
+<pre><code>&lt;Axes: title={'center': 'Field Goal Over Expected (FGOE) by Player - Blocks Removed'}, xlabel='FGOE'&gt;</code></pre>
+</div>
+<div class="cell-output cell-output-display">
+<p><img src="bambi_files/figure-html/cell-10-output-2.png" class="img-fluid"></p>
+</div>
+</div>
+<p>Justin Tucker is the 20th best kicker?! At the time in 2018, pitching this model would be difficult, and rightfully so.</p>
+<p>The problem with using this alone, is that in a limited sample size - there can be a lot of noise. Checking in on the dataset, there was a blocked field goal against Tucker. Outside the scope of this analysis, but its uncertain how much credit should be assigned to the kicker vs blocking. If we remove blocked kicks, the model looks more in line with what we would expect.</p>
+<div class="cell" data-execution_count="10">
+<div class="sourceCode cell-code" id="cb18"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb18-1"><a href="#cb18-1" aria-hidden="true" tabindex="-1"></a>idata_fgoe_no_block <span class="op">=</span> (</span>
+<span id="cb18-2"><a href="#cb18-2" aria-hidden="true" tabindex="-1"></a>    df_goe[<span class="st">"posterior"</span>][<span class="st">"p"</span>]</span>
+<span id="cb18-3"><a href="#cb18-3" aria-hidden="true" tabindex="-1"></a>    .to_dataframe()</span>
+<span id="cb18-4"><a href="#cb18-4" aria-hidden="true" tabindex="-1"></a>    .reset_index()</span>
+<span id="cb18-5"><a href="#cb18-5" aria-hidden="true" tabindex="-1"></a>    .merge(</span>
+<span id="cb18-6"><a href="#cb18-6" aria-hidden="true" tabindex="-1"></a>        df_2018[<span class="op">~</span>df_2018[<span class="st">"field_goal_result"</span>].isin([<span class="st">"Blocked"</span>])].assign(</span>
+<span id="cb18-7"><a href="#cb18-7" aria-hidden="true" tabindex="-1"></a>            __obs__<span class="op">=</span><span class="kw">lambda</span> x: np.arange(x.shape[<span class="dv">0</span>])</span>
+<span id="cb18-8"><a href="#cb18-8" aria-hidden="true" tabindex="-1"></a>        ),</span>
+<span id="cb18-9"><a href="#cb18-9" aria-hidden="true" tabindex="-1"></a>        on<span class="op">=</span><span class="st">"__obs__"</span>,</span>
+<span id="cb18-10"><a href="#cb18-10" aria-hidden="true" tabindex="-1"></a>    )</span>
+<span id="cb18-11"><a href="#cb18-11" aria-hidden="true" tabindex="-1"></a>    .assign(fgoe<span class="op">=</span><span class="kw">lambda</span> x: x[<span class="st">"success"</span>] <span class="op">-</span> x[<span class="st">"p"</span>])[</span>
+<span id="cb18-12"><a href="#cb18-12" aria-hidden="true" tabindex="-1"></a>        [<span class="st">"chain"</span>, <span class="st">"draw"</span>, <span class="st">"fgoe"</span>, <span class="st">"player_name"</span>, <span class="st">"__obs__"</span>]</span>
+<span id="cb18-13"><a href="#cb18-13" aria-hidden="true" tabindex="-1"></a>    ]</span>
+<span id="cb18-14"><a href="#cb18-14" aria-hidden="true" tabindex="-1"></a>    .groupby([<span class="st">"chain"</span>, <span class="st">"draw"</span>, <span class="st">"player_name"</span>], observed<span class="op">=</span><span class="va">True</span>)</span>
+<span id="cb18-15"><a href="#cb18-15" aria-hidden="true" tabindex="-1"></a>    .agg({<span class="st">"fgoe"</span>: <span class="st">"sum"</span>})</span>
+<span id="cb18-16"><a href="#cb18-16" aria-hidden="true" tabindex="-1"></a>    .to_xarray()</span>
+<span id="cb18-17"><a href="#cb18-17" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb18-18"><a href="#cb18-18" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb18-19"><a href="#cb18-19" aria-hidden="true" tabindex="-1"></a>plot_fgoe(</span>
+<span id="cb18-20"><a href="#cb18-20" aria-hidden="true" tabindex="-1"></a>    idata_fgoe_no_block, <span class="st">"Field Goal Over Expected (FGOE) by Player - Blocks Removed"</span></span>
+<span id="cb18-21"><a href="#cb18-21" aria-hidden="true" tabindex="-1"></a>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="42">
+<pre><code>&lt;Axes: title={'center': 'Field Goal Over Expected (FGOE) by Player - Blocks Removed'}, xlabel='FGOE'&gt;</code></pre>
+</div>
+<div class="cell-output cell-output-display">
+<p><img src="bambi_files/figure-html/cell-11-output-2.png" class="img-fluid"></p>
+</div>
+</div>
+<p>That however is arbitrary, and a more robust solution is needed.</p>
+<hr>
+<section id="simulated-fgoe" class="level4">
+<h4 class="anchored" data-anchor-id="simulated-fgoe">Simulated FGOE</h4>
+<p>The model chosen allows us to take the parameter of the player’s intercept, after accounting for the distance of the kick. This lets us look at what-if scenarios, and project out past the observed data. What if we model kickers on the same set of kicks. We then have a way to accont for what we can expect each kicker to make.</p>
+<p>I chose linear values of kicks from 25-60 yards. Part of this is simplicity, it is easy to explain and the first step towards getting organizational buy-in from the model.</p>
+<div class="cell" data-execution_count="11">
+<div class="sourceCode cell-code" id="cb20"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb20-1"><a href="#cb20-1" aria-hidden="true" tabindex="-1"></a><span class="co"># This creates a grid of kicks for the players in 2018</span></span>
+<span id="cb20-2"><a href="#cb20-2" aria-hidden="true" tabindex="-1"></a>df_grid_18 <span class="op">=</span> create_grid(df_model_pd)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+<div class="cell" data-execution_count="12">
+<div class="sourceCode cell-code" id="cb21"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb21-1"><a href="#cb21-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Get posterior predictions without group effects</span></span>
+<span id="cb21-2"><a href="#cb21-2" aria-hidden="true" tabindex="-1"></a>avg_preds <span class="op">=</span> model.predict(</span>
+<span id="cb21-3"><a href="#cb21-3" aria-hidden="true" tabindex="-1"></a>    idata, data<span class="op">=</span>df_grid_18, inplace<span class="op">=</span><span class="va">False</span>, include_group_specific<span class="op">=</span><span class="va">False</span></span>
+<span id="cb21-4"><a href="#cb21-4" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb21-5"><a href="#cb21-5" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb21-6"><a href="#cb21-6" aria-hidden="true" tabindex="-1"></a><span class="co"># posterior predictions on grid</span></span>
+<span id="cb21-7"><a href="#cb21-7" aria-hidden="true" tabindex="-1"></a>preds <span class="op">=</span> model.predict(idata, data<span class="op">=</span>df_grid_18, inplace<span class="op">=</span><span class="va">False</span>)</span>
+<span id="cb21-8"><a href="#cb21-8" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb21-9"><a href="#cb21-9" aria-hidden="true" tabindex="-1"></a>df_pred <span class="op">=</span> preds.posterior[<span class="st">"p"</span>].to_dataframe().reset_index()</span>
+<span id="cb21-10"><a href="#cb21-10" aria-hidden="true" tabindex="-1"></a>df_avg_pred <span class="op">=</span> avg_preds[<span class="st">"posterior"</span>][<span class="st">"p"</span>].to_dataframe().reset_index()</span>
+<span id="cb21-11"><a href="#cb21-11" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb21-12"><a href="#cb21-12" aria-hidden="true" tabindex="-1"></a><span class="co"># take the predictions form the players and subtract the posterior predictions without group effects. This provides the main source of the metric for simulated FGOE</span></span>
+<span id="cb21-13"><a href="#cb21-13" aria-hidden="true" tabindex="-1"></a>df_fgoe <span class="op">=</span> (</span>
+<span id="cb21-14"><a href="#cb21-14" aria-hidden="true" tabindex="-1"></a>    df_pred.merge(df_avg_pred, on<span class="op">=</span>[<span class="st">"chain"</span>, <span class="st">"draw"</span>, <span class="st">"__obs__"</span>], how<span class="op">=</span><span class="st">"inner"</span>)</span>
+<span id="cb21-15"><a href="#cb21-15" aria-hidden="true" tabindex="-1"></a>    .merge(</span>
+<span id="cb21-16"><a href="#cb21-16" aria-hidden="true" tabindex="-1"></a>        df_grid_18[[<span class="st">"player_id"</span>, <span class="st">"player_name"</span>, <span class="st">"distance"</span>, <span class="st">"__obs__"</span>]],</span>
+<span id="cb21-17"><a href="#cb21-17" aria-hidden="true" tabindex="-1"></a>        on<span class="op">=</span>[<span class="st">"__obs__"</span>],</span>
+<span id="cb21-18"><a href="#cb21-18" aria-hidden="true" tabindex="-1"></a>        how<span class="op">=</span><span class="st">"left"</span>,</span>
+<span id="cb21-19"><a href="#cb21-19" aria-hidden="true" tabindex="-1"></a>    )</span>
+<span id="cb21-20"><a href="#cb21-20" aria-hidden="true" tabindex="-1"></a>    .assign(fgoe<span class="op">=</span><span class="kw">lambda</span> x: x[<span class="st">"p_x"</span>] <span class="op">-</span> x[<span class="st">"p_y"</span>])</span>
+<span id="cb21-21"><a href="#cb21-21" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb21-22"><a href="#cb21-22" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb21-23"><a href="#cb21-23" aria-hidden="true" tabindex="-1"></a><span class="co"># polars makes dataframe go brrr</span></span>
+<span id="cb21-24"><a href="#cb21-24" aria-hidden="true" tabindex="-1"></a>df_output <span class="op">=</span> (</span>
+<span id="cb21-25"><a href="#cb21-25" aria-hidden="true" tabindex="-1"></a>    pl.from_pandas(df_fgoe)</span>
+<span id="cb21-26"><a href="#cb21-26" aria-hidden="true" tabindex="-1"></a>    .group_by([<span class="st">"player_id"</span>, <span class="st">"player_name"</span>, <span class="st">"draw"</span>, <span class="st">"chain"</span>])</span>
+<span id="cb21-27"><a href="#cb21-27" aria-hidden="true" tabindex="-1"></a>    .agg(pl.col(<span class="st">"fgoe"</span>).<span class="bu">sum</span>())</span>
+<span id="cb21-28"><a href="#cb21-28" aria-hidden="true" tabindex="-1"></a>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+<p>With the simulation of kicks, we can now look at a <em>Simulated</em> FGOE. This is on a scale of the number of draws in our posterior samples, and each player has 4000 simulations across a distribution of kicks. This provides the ability to quantify uncertainty within our estimate and look at range of outcomes. (also much better than sample sizes of ~6 kicks!)</p>
+<div class="cell" data-execution_count="13">
+<div class="sourceCode cell-code" id="cb22"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb22-1"><a href="#cb22-1" aria-hidden="true" tabindex="-1"></a>idata_post <span class="op">=</span> df_output.to_pandas().set_index([<span class="st">'chain'</span>, <span class="st">'draw'</span>, <span class="st">'player_name'</span>]).to_xarray()</span>
+<span id="cb22-2"><a href="#cb22-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb22-3"><a href="#cb22-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb22-4"><a href="#cb22-4" aria-hidden="true" tabindex="-1"></a>plot_fgoe(idata_post, <span class="st">"Simulated FGOE"</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="45">
+<pre><code>&lt;Axes: title={'center': 'Simulated FGOE'}, xlabel='FGOE'&gt;</code></pre>
+</div>
+<div class="cell-output cell-output-display">
+<p><img src="bambi_files/figure-html/cell-14-output-2.png" class="img-fluid"></p>
+</div>
+</div>
+<p>To compare the raw vs simulated FGOE, we can look at the posterior distributions between the two approachs. Note: they aren’t necesarily 1:1 comparisons of the same scale, because in the raw version we are limited to the kicks that the kicker attempted. What is more important is to look directionally at what the simulated model does compared to the regular. Easily shown is Justin Tucker is firmly at the top of the list, without having to adjust arbitrarily for blocked kicks.</p>
+<div class="cell" data-execution_count="14">
+<div class="sourceCode cell-code" id="cb24"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb24-1"><a href="#cb24-1" aria-hidden="true" tabindex="-1"></a>fgoe_mean <span class="op">=</span> idata_post[<span class="st">"fgoe"</span>].mean((<span class="st">"chain"</span>, <span class="st">"draw"</span>)) <span class="op">*</span> <span class="op">-</span><span class="dv">1</span></span>
+<span id="cb24-2"><a href="#cb24-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb24-3"><a href="#cb24-3" aria-hidden="true" tabindex="-1"></a>axs <span class="op">=</span> az.plot_forest(</span>
+<span id="cb24-4"><a href="#cb24-4" aria-hidden="true" tabindex="-1"></a>    [idata_post.sortby(fgoe_mean), idata_fgoe.sortby(fgoe_mean)],</span>
+<span id="cb24-5"><a href="#cb24-5" aria-hidden="true" tabindex="-1"></a>    var_names<span class="op">=</span>[<span class="st">"fgoe"</span>],</span>
+<span id="cb24-6"><a href="#cb24-6" aria-hidden="true" tabindex="-1"></a>    model_names<span class="op">=</span>[<span class="st">"Simulated"</span>, <span class="st">"Regular"</span>],</span>
+<span id="cb24-7"><a href="#cb24-7" aria-hidden="true" tabindex="-1"></a>    combined<span class="op">=</span><span class="va">True</span>,</span>
+<span id="cb24-8"><a href="#cb24-8" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb24-9"><a href="#cb24-9" aria-hidden="true" tabindex="-1"></a>ax <span class="op">=</span> axs[<span class="dv">0</span>]</span>
+<span id="cb24-10"><a href="#cb24-10" aria-hidden="true" tabindex="-1"></a>ax.axvline(x<span class="op">=</span><span class="dv">0</span>, color<span class="op">=</span><span class="st">"black"</span>, linestyle<span class="op">=</span><span class="st">"--"</span>, linewidth<span class="op">=</span><span class="dv">1</span>)</span>
+<span id="cb24-11"><a href="#cb24-11" aria-hidden="true" tabindex="-1"></a>ax.set_title(<span class="st">"Comparison"</span>)</span>
+<span id="cb24-12"><a href="#cb24-12" aria-hidden="true" tabindex="-1"></a>ax.set_xlabel(<span class="st">"FGOE"</span>)</span>
+<span id="cb24-13"><a href="#cb24-13" aria-hidden="true" tabindex="-1"></a>ax.tick_params(axis<span class="op">=</span><span class="st">"y"</span>, labelsize<span class="op">=</span><span class="dv">8</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display">
+<p><img src="bambi_files/figure-html/cell-15-output-1.png" class="img-fluid"></p>
+</div>
+</div>
+</section>
+</section>
+<section id="leaderboard" class="level2">
+<h2 class="anchored" data-anchor-id="leaderboard">Leaderboard</h2>
+<div class="cell" data-execution_count="15">
+<div class="sourceCode cell-code" id="cb25"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb25-1"><a href="#cb25-1" aria-hidden="true" tabindex="-1"></a>leaderboard <span class="op">=</span> create_leaderboard(df_output, idata_post)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+<div class="cell" data-execution_count="16">
+<div class="sourceCode cell-code" id="cb26"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb26-1"><a href="#cb26-1" aria-hidden="true" tabindex="-1"></a>(</span>
+<span id="cb26-2"><a href="#cb26-2" aria-hidden="true" tabindex="-1"></a>    GT(pl.concat([leaderboard.head(<span class="dv">10</span>), leaderboard.tail(<span class="dv">10</span>)]))</span>
+<span id="cb26-3"><a href="#cb26-3" aria-hidden="true" tabindex="-1"></a>    .tab_header(title<span class="op">=</span><span class="st">"2018 NFL Kicker Leaderboard"</span>)</span>
+<span id="cb26-4"><a href="#cb26-4" aria-hidden="true" tabindex="-1"></a>    .tab_spanner(label<span class="op">=</span><span class="st">"Simulated FGOE"</span>, columns<span class="op">=</span>[<span class="st">"rating"</span>, <span class="st">"sd"</span>, <span class="st">"hdi_5%"</span>, <span class="st">"hdi_95%"</span>])</span>
+<span id="cb26-5"><a href="#cb26-5" aria-hidden="true" tabindex="-1"></a>    .fmt_number(columns<span class="op">=</span>[<span class="st">"rating"</span>, <span class="st">"sd"</span>, <span class="st">"hdi_5%"</span>, <span class="st">"hdi_95%"</span>], decimals<span class="op">=</span><span class="dv">2</span>)</span>
+<span id="cb26-6"><a href="#cb26-6" aria-hidden="true" tabindex="-1"></a>    .fmt_percent(<span class="st">'top_5'</span>, decimals<span class="op">=</span><span class="dv">1</span>)</span>
+<span id="cb26-7"><a href="#cb26-7" aria-hidden="true" tabindex="-1"></a>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="48">
+
+<div id="nirkcgfewx" style="padding-left:0px;padding-right:0px;padding-top:10px;padding-bottom:10px;overflow-x:auto;overflow-y:auto;width:auto;height:auto;">
+<style>
+#nirkcgfewx table {
+          font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Helvetica Neue', 'Fira Sans', 'Droid Sans', Arial, sans-serif;
+          -webkit-font-smoothing: antialiased;
+          -moz-osx-font-smoothing: grayscale;
+        }
+
+#nirkcgfewx thead, tbody, tfoot, tr, td, th { border-style: none; }
+ tr { background-color: transparent; }
+#nirkcgfewx p { margin: 0; padding: 0; }
+ #nirkcgfewx .gt_table { display: table; border-collapse: collapse; line-height: normal; margin-left: auto; margin-right: auto; color: #333333; font-size: 16px; font-weight: normal; font-style: normal; background-color: #FFFFFF; width: auto; border-top-style: solid; border-top-width: 2px; border-top-color: #A8A8A8; border-right-style: none; border-right-width: 2px; border-right-color: #D3D3D3; border-bottom-style: solid; border-bottom-width: 2px; border-bottom-color: #A8A8A8; border-left-style: none; border-left-width: 2px; border-left-color: #D3D3D3; }
+ #nirkcgfewx .gt_caption { padding-top: 4px; padding-bottom: 4px; }
+ #nirkcgfewx .gt_title { color: #333333; font-size: 125%; font-weight: initial; padding-top: 4px; padding-bottom: 4px; padding-left: 5px; padding-right: 5px; border-bottom-color: #FFFFFF; border-bottom-width: 0; }
+ #nirkcgfewx .gt_subtitle { color: #333333; font-size: 85%; font-weight: initial; padding-top: 3px; padding-bottom: 5px; padding-left: 5px; padding-right: 5px; border-top-color: #FFFFFF; border-top-width: 0; }
+ #nirkcgfewx .gt_heading { background-color: #FFFFFF; text-align: center; border-bottom-color: #FFFFFF; border-left-style: none; border-left-width: 1px; border-left-color: #D3D3D3; border-right-style: none; border-right-width: 1px; border-right-color: #D3D3D3; }
+ #nirkcgfewx .gt_bottom_border { border-bottom-style: solid; border-bottom-width: 2px; border-bottom-color: #D3D3D3; }
+ #nirkcgfewx .gt_col_headings { border-top-style: solid; border-top-width: 2px; border-top-color: #D3D3D3; border-bottom-style: solid; border-bottom-width: 2px; border-bottom-color: #D3D3D3; border-left-style: none; border-left-width: 1px; border-left-color: #D3D3D3; border-right-style: none; border-right-width: 1px; border-right-color: #D3D3D3; }
+ #nirkcgfewx .gt_col_heading { color: #333333; background-color: #FFFFFF; font-size: 100%; font-weight: normal; text-transform: inherit; border-left-style: none; border-left-width: 1px; border-left-color: #D3D3D3; border-right-style: none; border-right-width: 1px; border-right-color: #D3D3D3; vertical-align: bottom; padding-top: 5px; padding-bottom: 5px; padding-left: 5px; padding-right: 5px; overflow-x: hidden; }
+ #nirkcgfewx .gt_column_spanner_outer { color: #333333; background-color: #FFFFFF; font-size: 100%; font-weight: normal; text-transform: inherit; padding-top: 0; padding-bottom: 0; padding-left: 4px; padding-right: 4px; }
+ #nirkcgfewx .gt_column_spanner_outer:first-child { padding-left: 0; }
+ #nirkcgfewx .gt_column_spanner_outer:last-child { padding-right: 0; }
+ #nirkcgfewx .gt_column_spanner { border-bottom-style: solid; border-bottom-width: 2px; border-bottom-color: #D3D3D3; vertical-align: bottom; padding-top: 5px; padding-bottom: 5px; overflow-x: hidden; display: inline-block; width: 100%; }
+ #nirkcgfewx .gt_spanner_row { border-bottom-style: hidden; }
+ #nirkcgfewx .gt_group_heading { padding-top: 8px; padding-bottom: 8px; padding-left: 5px; padding-right: 5px; color: #333333; background-color: #FFFFFF; font-size: 100%; font-weight: initial; text-transform: inherit; border-top-style: solid; border-top-width: 2px; border-top-color: #D3D3D3; border-bottom-style: solid; border-bottom-width: 2px; border-bottom-color: #D3D3D3; border-left-style: none; border-left-width: 1px; border-left-color: #D3D3D3; border-right-style: none; border-right-width: 1px; border-right-color: #D3D3D3; vertical-align: middle; text-align: left; }
+ #nirkcgfewx .gt_empty_group_heading { padding: 0.5px; color: #333333; background-color: #FFFFFF; font-size: 100%; font-weight: initial; border-top-style: solid; border-top-width: 2px; border-top-color: #D3D3D3; border-bottom-style: solid; border-bottom-width: 2px; border-bottom-color: #D3D3D3; vertical-align: middle; }
+ #nirkcgfewx .gt_from_md> :first-child { margin-top: 0; }
+ #nirkcgfewx .gt_from_md> :last-child { margin-bottom: 0; }
+ #nirkcgfewx .gt_row { padding-top: 8px; padding-bottom: 8px; padding-left: 5px; padding-right: 5px; margin: 10px; border-top-style: solid; border-top-width: 1px; border-top-color: #D3D3D3; border-left-style: none; border-left-width: 1px; border-left-color: #D3D3D3; border-right-style: none; border-right-width: 1px; border-right-color: #D3D3D3; vertical-align: middle; overflow-x: hidden; }
+ #nirkcgfewx .gt_stub { color: #333333; background-color: #FFFFFF; font-size: 100%; font-weight: initial; text-transform: inherit; border-right-style: solid; border-right-width: 2px; border-right-color: #D3D3D3; padding-left: 5px; padding-right: 5px; }
+ #nirkcgfewx .gt_stub_row_group { color: #333333; background-color: #FFFFFF; font-size: 100%; font-weight: initial; text-transform: inherit; border-right-style: solid; border-right-width: 2px; border-right-color: #D3D3D3; padding-left: 5px; padding-right: 5px; vertical-align: top; }
+ #nirkcgfewx .gt_row_group_first td { border-top-width: 2px; }
+ #nirkcgfewx .gt_row_group_first th { border-top-width: 2px; }
+ #nirkcgfewx .gt_striped { background-color: rgba(128,128,128,0.05); }
+ #nirkcgfewx .gt_table_body { border-top-style: solid; border-top-width: 2px; border-top-color: #D3D3D3; border-bottom-style: solid; border-bottom-width: 2px; border-bottom-color: #D3D3D3; }
+ #nirkcgfewx .gt_sourcenotes { color: #333333; background-color: #FFFFFF; border-bottom-style: none; border-bottom-width: 2px; border-bottom-color: #D3D3D3; border-left-style: none; border-left-width: 2px; border-left-color: #D3D3D3; border-right-style: none; border-right-width: 2px; border-right-color: #D3D3D3; }
+ #nirkcgfewx .gt_sourcenote { font-size: 90%; padding-top: 4px; padding-bottom: 4px; padding-left: 5px; padding-right: 5px; text-align: left; }
+ #nirkcgfewx .gt_left { text-align: left; }
+ #nirkcgfewx .gt_center { text-align: center; }
+ #nirkcgfewx .gt_right { text-align: right; font-variant-numeric: tabular-nums; }
+ #nirkcgfewx .gt_font_normal { font-weight: normal; }
+ #nirkcgfewx .gt_font_bold { font-weight: bold; }
+ #nirkcgfewx .gt_font_italic { font-style: italic; }
+ #nirkcgfewx .gt_super { font-size: 65%; }
+ #nirkcgfewx .gt_footnote_marks { font-size: 75%; vertical-align: 0.4em; position: initial; }
+ #nirkcgfewx .gt_asterisk { font-size: 100%; vertical-align: 0; }
+ 
+</style>
+<table class="gt_table" data-quarto-disable-processing="false" data-quarto-bootstrap="false">
+<thead>
+
+  <tr class="gt_heading">
+    <td colspan="8" class="gt_heading gt_title gt_font_normal">2018 NFL Kicker Leaderboard</td>
+  </tr>
+<tr class="gt_col_headings gt_spanner_row">
+  <th class="gt_col_heading gt_columns_bottom_border gt_center" rowspan="2" colspan="1" scope="col" id="player_id">player_id</th>
+  <th class="gt_col_heading gt_columns_bottom_border gt_left" rowspan="2" colspan="1" scope="col" id="player_name">player_name</th>
+  <th class="gt_col_heading gt_columns_bottom_border gt_right" rowspan="2" colspan="1" scope="col" id="rank">rank</th>
+  <th class="gt_center gt_columns_top_border gt_column_spanner_outer" rowspan="1" colspan="4" scope="colgroup" id="Simulated-FGOE">
+    <span class="gt_column_spanner">Simulated FGOE</span>
+  </th>
+  <th class="gt_col_heading gt_columns_bottom_border gt_right" rowspan="2" colspan="1" scope="col" id="top_5">top_5</th>
+</tr>
+<tr class="gt_col_headings">
+  <th class="gt_col_heading gt_columns_bottom_border gt_right" rowspan="1" colspan="1" scope="col" id="rating">rating</th>
+  <th class="gt_col_heading gt_columns_bottom_border gt_right" rowspan="1" colspan="1" scope="col" id="sd">sd</th>
+  <th class="gt_col_heading gt_columns_bottom_border gt_right" rowspan="1" colspan="1" scope="col" id="hdi_5%">hdi_5%</th>
+  <th class="gt_col_heading gt_columns_bottom_border gt_right" rowspan="1" colspan="1" scope="col" id="hdi_95%">hdi_95%</th>
+</tr>
+</thead>
+<tbody class="gt_table_body">
+  <tr>
+    <td class="gt_row gt_center">39470</td>
+    <td class="gt_row gt_left">JUSTIN TUCKER</td>
+    <td class="gt_row gt_right">1</td>
+    <td class="gt_row gt_right">2.19</td>
+    <td class="gt_row gt_right">0.82</td>
+    <td class="gt_row gt_right">0.86</td>
+    <td class="gt_row gt_right">3.54</td>
+    <td class="gt_row gt_right">82.8%</td>
+  </tr>
+  <tr>
+    <td class="gt_row gt_center">27091</td>
+    <td class="gt_row gt_left">MATT BRYANT</td>
+    <td class="gt_row gt_right">2</td>
+    <td class="gt_row gt_right">1.52</td>
+    <td class="gt_row gt_right">0.80</td>
+    <td class="gt_row gt_right">0.11</td>
+    <td class="gt_row gt_right">2.73</td>
+    <td class="gt_row gt_right">46.9%</td>
+  </tr>
+  <tr>
+    <td class="gt_row gt_center">21213</td>
+    <td class="gt_row gt_left">ADAM VINATIERI</td>
+    <td class="gt_row gt_right">3</td>
+    <td class="gt_row gt_right">1.32</td>
+    <td class="gt_row gt_right">0.77</td>
+    <td class="gt_row gt_right">0.16</td>
+    <td class="gt_row gt_right">2.68</td>
+    <td class="gt_row gt_right">35.8%</td>
+  </tr>
+  <tr>
+    <td class="gt_row gt_center">38134</td>
+    <td class="gt_row gt_left">DAN BAILEY</td>
+    <td class="gt_row gt_right">4</td>
+    <td class="gt_row gt_right">1.28</td>
+    <td class="gt_row gt_right">0.80</td>
+    <td class="gt_row gt_right">−0.07</td>
+    <td class="gt_row gt_right">2.52</td>
+    <td class="gt_row gt_right">35.1%</td>
+  </tr>
+  <tr>
+    <td class="gt_row gt_center">33469</td>
+    <td class="gt_row gt_left">STEVEN HAUSCHKA</td>
+    <td class="gt_row gt_right">5</td>
+    <td class="gt_row gt_right">1.20</td>
+    <td class="gt_row gt_right">0.82</td>
+    <td class="gt_row gt_right">−0.05</td>
+    <td class="gt_row gt_right">2.60</td>
+    <td class="gt_row gt_right">31.4%</td>
+  </tr>
+  <tr>
+    <td class="gt_row gt_center">30932</td>
+    <td class="gt_row gt_left">STEPHEN GOSTKOWSKI</td>
+    <td class="gt_row gt_right">6</td>
+    <td class="gt_row gt_right">1.24</td>
+    <td class="gt_row gt_right">0.76</td>
+    <td class="gt_row gt_right">−0.00</td>
+    <td class="gt_row gt_right">2.48</td>
+    <td class="gt_row gt_right">31.3%</td>
+  </tr>
+  <tr>
+    <td class="gt_row gt_center">30403</td>
+    <td class="gt_row gt_left">ROBBIE GOULD</td>
+    <td class="gt_row gt_right">7</td>
+    <td class="gt_row gt_right">1.03</td>
+    <td class="gt_row gt_right">0.79</td>
+    <td class="gt_row gt_right">−0.35</td>
+    <td class="gt_row gt_right">2.27</td>
+    <td class="gt_row gt_right">23.2%</td>
+  </tr>
+  <tr>
+    <td class="gt_row gt_center">45046</td>
+    <td class="gt_row gt_left">HARRISON BUTKER</td>
+    <td class="gt_row gt_right">8</td>
+    <td class="gt_row gt_right">0.75</td>
+    <td class="gt_row gt_right">1.10</td>
+    <td class="gt_row gt_right">−0.90</td>
+    <td class="gt_row gt_right">2.71</td>
+    <td class="gt_row gt_right">21.6%</td>
+  </tr>
+  <tr>
+    <td class="gt_row gt_center">31446</td>
+    <td class="gt_row gt_left">MATT PRATER</td>
+    <td class="gt_row gt_right">9</td>
+    <td class="gt_row gt_right">0.93</td>
+    <td class="gt_row gt_right">0.77</td>
+    <td class="gt_row gt_right">−0.32</td>
+    <td class="gt_row gt_right">2.17</td>
+    <td class="gt_row gt_right">18.7%</td>
+  </tr>
+  <tr>
+    <td class="gt_row gt_center">40775</td>
+    <td class="gt_row gt_left">BRETT MAHER</td>
+    <td class="gt_row gt_right">10</td>
+    <td class="gt_row gt_right">0.46</td>
+    <td class="gt_row gt_right">1.19</td>
+    <td class="gt_row gt_right">−1.44</td>
+    <td class="gt_row gt_right">2.43</td>
+    <td class="gt_row gt_right">15.7%</td>
+  </tr>
+  <tr>
+    <td class="gt_row gt_center">43937</td>
+    <td class="gt_row gt_left">ALDRICK ROSAS</td>
+    <td class="gt_row gt_right">30</td>
+    <td class="gt_row gt_right">−0.51</td>
+    <td class="gt_row gt_right">1.17</td>
+    <td class="gt_row gt_right">−2.35</td>
+    <td class="gt_row gt_right">1.43</td>
+    <td class="gt_row gt_right">3.0%</td>
+  </tr>
+  <tr>
+    <td class="gt_row gt_center">40276</td>
+    <td class="gt_row gt_left">BRANDON MCMANUS</td>
+    <td class="gt_row gt_right">31</td>
+    <td class="gt_row gt_right">−0.17</td>
+    <td class="gt_row gt_right">0.96</td>
+    <td class="gt_row gt_right">−1.70</td>
+    <td class="gt_row gt_right">1.41</td>
+    <td class="gt_row gt_right">2.9%</td>
+  </tr>
+  <tr>
+    <td class="gt_row gt_center">34707</td>
+    <td class="gt_row gt_left">RYAN SUCCOP</td>
+    <td class="gt_row gt_right">32</td>
+    <td class="gt_row gt_right">0.09</td>
+    <td class="gt_row gt_right">0.79</td>
+    <td class="gt_row gt_right">−1.18</td>
+    <td class="gt_row gt_right">1.38</td>
+    <td class="gt_row gt_right">2.9%</td>
+  </tr>
+  <tr>
+    <td class="gt_row gt_center">44240</td>
+    <td class="gt_row gt_left">SAM FICKEN</td>
+    <td class="gt_row gt_right">33</td>
+    <td class="gt_row gt_right">−0.79</td>
+    <td class="gt_row gt_right">1.36</td>
+    <td class="gt_row gt_right">−3.05</td>
+    <td class="gt_row gt_right">1.38</td>
+    <td class="gt_row gt_right">2.5%</td>
+  </tr>
+  <tr>
+    <td class="gt_row gt_center">38691</td>
+    <td class="gt_row gt_left">RANDY BULLOCK</td>
+    <td class="gt_row gt_right">34</td>
+    <td class="gt_row gt_right">−0.35</td>
+    <td class="gt_row gt_right">0.93</td>
+    <td class="gt_row gt_right">−1.86</td>
+    <td class="gt_row gt_right">1.18</td>
+    <td class="gt_row gt_right">1.8%</td>
+  </tr>
+  <tr>
+    <td class="gt_row gt_center">45037</td>
+    <td class="gt_row gt_left">ZANE GONZALEZ</td>
+    <td class="gt_row gt_right">35</td>
+    <td class="gt_row gt_right">−0.91</td>
+    <td class="gt_row gt_right">1.25</td>
+    <td class="gt_row gt_right">−2.91</td>
+    <td class="gt_row gt_right">1.14</td>
+    <td class="gt_row gt_right">1.3%</td>
+  </tr>
+  <tr>
+    <td class="gt_row gt_center">29874</td>
+    <td class="gt_row gt_left">MIKE NUGENT</td>
+    <td class="gt_row gt_right">36</td>
+    <td class="gt_row gt_right">−0.39</td>
+    <td class="gt_row gt_right">0.83</td>
+    <td class="gt_row gt_right">−1.67</td>
+    <td class="gt_row gt_right">1.04</td>
+    <td class="gt_row gt_right">0.6%</td>
+  </tr>
+  <tr>
+    <td class="gt_row gt_center">35102</td>
+    <td class="gt_row gt_left">GRAHAM GANO</td>
+    <td class="gt_row gt_right">37</td>
+    <td class="gt_row gt_right">−0.31</td>
+    <td class="gt_row gt_right">0.76</td>
+    <td class="gt_row gt_right">−1.60</td>
+    <td class="gt_row gt_right">0.90</td>
+    <td class="gt_row gt_right">0.6%</td>
+  </tr>
+  <tr>
+    <td class="gt_row gt_center">40114</td>
+    <td class="gt_row gt_left">CALEB STURGIS</td>
+    <td class="gt_row gt_right">38</td>
+    <td class="gt_row gt_right">−0.60</td>
+    <td class="gt_row gt_right">0.89</td>
+    <td class="gt_row gt_right">−2.10</td>
+    <td class="gt_row gt_right">0.82</td>
+    <td class="gt_row gt_right">0.5%</td>
+  </tr>
+  <tr>
+    <td class="gt_row gt_center">32386</td>
+    <td class="gt_row gt_left">MASON CROSBY</td>
+    <td class="gt_row gt_right">39</td>
+    <td class="gt_row gt_right">−0.65</td>
+    <td class="gt_row gt_right">0.80</td>
+    <td class="gt_row gt_right">−2.01</td>
+    <td class="gt_row gt_right">0.57</td>
+    <td class="gt_row gt_right">0.2%</td>
+  </tr>
+</tbody>
+
+
+</table>
+
+</div>
+        
+</div>
+</div>
+</section>
+
+
+<div id="quarto-appendix" class="default"><section id="footnotes" class="footnotes footnotes-end-of-document" role="doc-endnotes"><h2 class="anchored quarto-appendix-heading">Footnotes</h2>
+
+<ol>
+<li id="fn1"><p>https://mc-stan.org/loo/reference/loo.html<a href="#fnref1" class="footnote-back" role="doc-backlink">↩︎</a></p></li>
+</ol>
+</section></div></main>
+<!-- /main column -->
+<script type="application/vnd.jupyter.widget-state+json">
+{"state":{"1fc05aec9e7843a294df1616b892611f":{"model_module":"@jupyter-widgets/base","model_module_version":"2.0.0","model_name":"LayoutModel","state":{"_model_module":"@jupyter-widgets/base","_model_module_version":"2.0.0","_model_name":"LayoutModel","_view_count":null,"_view_module":"@jupyter-widgets/base","_view_module_version":"2.0.0","_view_name":"LayoutView","align_content":null,"align_items":null,"align_self":null,"border_bottom":null,"border_left":null,"border_right":null,"border_top":null,"bottom":null,"display":null,"flex":null,"flex_flow":null,"grid_area":null,"grid_auto_columns":null,"grid_auto_flow":null,"grid_auto_rows":null,"grid_column":null,"grid_gap":null,"grid_row":null,"grid_template_areas":null,"grid_template_columns":null,"grid_template_rows":null,"height":null,"justify_content":null,"justify_items":null,"left":null,"margin":null,"max_height":null,"max_width":null,"min_height":null,"min_width":null,"object_fit":null,"object_position":null,"order":null,"overflow":null,"padding":null,"right":null,"top":null,"visibility":null,"width":null}},"332e4f6272784529a434c077910e8796":{"model_module":"@jupyter-widgets/output","model_module_version":"1.0.0","model_name":"OutputModel","state":{"_dom_classes":[],"_model_module":"@jupyter-widgets/output","_model_module_version":"1.0.0","_model_name":"OutputModel","_view_count":null,"_view_module":"@jupyter-widgets/output","_view_module_version":"1.0.0","_view_name":"OutputView","layout":"IPY_MODEL_1fc05aec9e7843a294df1616b892611f","msg_id":"","outputs":[{"data":{"text/html":"<pre style=\"white-space:pre;overflow-x:auto;line-height:normal;font-family:Menlo,'DejaVu Sans Mono',consolas,'Courier New',monospace\">                                                                                                                   \n <span style=\"font-weight: bold\"> Progress                  </span> <span style=\"font-weight: bold\"> Draws </span> <span style=\"font-weight: bold\"> Divergences </span> <span style=\"font-weight: bold\"> Step size </span> <span style=\"font-weight: bold\"> Grad evals </span> <span style=\"font-weight: bold\"> Sampling Speed </span> <span style=\"font-weight: bold\"> Elapsed </span> <span style=\"font-weight: bold\"> Remaining </span> \n ───────────────────────────────────────────────────────────────────────────────────────────────────────────────── \n  <span style=\"color: #1f77b4; text-decoration-color: #1f77b4\">━━━━━━━━━━━━━━━━━━━━━━━━━</span>   2000    0             0.31        15           158.64 draws/s   0:00:12   0:00:00    \n  <span style=\"color: #1f77b4; text-decoration-color: #1f77b4\">━━━━━━━━━━━━━━━━━━━━━━━━━</span>   2000    0             0.29        15           79.05 draws/s    0:00:25   0:00:00    \n  <span style=\"color: #1f77b4; text-decoration-color: #1f77b4\">━━━━━━━━━━━━━━━━━━━━━━━━━</span>   2000    0             0.28        15           52.87 draws/s    0:00:37   0:00:00    \n  <span style=\"color: #1f77b4; text-decoration-color: #1f77b4\">━━━━━━━━━━━━━━━━━━━━━━━━━</span>   2000    0             0.24        15           39.75 draws/s    0:00:50   0:00:00    \n                                                                                                                   \n</pre>\n","text/plain":"                                                                                                                   \n \u001b[1m \u001b[0m\u001b[1mProgress                 \u001b[0m\u001b[1m \u001b[0m \u001b[1m \u001b[0m\u001b[1mDraws\u001b[0m\u001b[1m \u001b[0m \u001b[1m \u001b[0m\u001b[1mDivergences\u001b[0m\u001b[1m \u001b[0m \u001b[1m \u001b[0m\u001b[1mStep size\u001b[0m\u001b[1m \u001b[0m \u001b[1m \u001b[0m\u001b[1mGrad evals\u001b[0m\u001b[1m \u001b[0m \u001b[1m \u001b[0m\u001b[1mSampling Speed\u001b[0m\u001b[1m \u001b[0m \u001b[1m \u001b[0m\u001b[1mElapsed\u001b[0m\u001b[1m \u001b[0m \u001b[1m \u001b[0m\u001b[1mRemaining\u001b[0m\u001b[1m \u001b[0m \n ───────────────────────────────────────────────────────────────────────────────────────────────────────────────── \n  \u001b[38;2;31;119;180m━━━━━━━━━━━━━━━━━━━━━━━━━\u001b[0m   2000    0             0.31        15           158.64 draws/s   0:00:12   0:00:00    \n  \u001b[38;2;31;119;180m━━━━━━━━━━━━━━━━━━━━━━━━━\u001b[0m   2000    0             0.29        15           79.05 draws/s    0:00:25   0:00:00    \n  \u001b[38;2;31;119;180m━━━━━━━━━━━━━━━━━━━━━━━━━\u001b[0m   2000    0             0.28        15           52.87 draws/s    0:00:37   0:00:00    \n  \u001b[38;2;31;119;180m━━━━━━━━━━━━━━━━━━━━━━━━━\u001b[0m   2000    0             0.24        15           39.75 draws/s    0:00:50   0:00:00    \n                                                                                                                   \n"},"metadata":{},"output_type":"display_data"}],"tabbable":null,"tooltip":null}},"45c9259291ce4ad3a207c41ad30d8e8b":{"model_module":"@jupyter-widgets/base","model_module_version":"2.0.0","model_name":"LayoutModel","state":{"_model_module":"@jupyter-widgets/base","_model_module_version":"2.0.0","_model_name":"LayoutModel","_view_count":null,"_view_module":"@jupyter-widgets/base","_view_module_version":"2.0.0","_view_name":"LayoutView","align_content":null,"align_items":null,"align_self":null,"border_bottom":null,"border_left":null,"border_right":null,"border_top":null,"bottom":null,"display":null,"flex":null,"flex_flow":null,"grid_area":null,"grid_auto_columns":null,"grid_auto_flow":null,"grid_auto_rows":null,"grid_column":null,"grid_gap":null,"grid_row":null,"grid_template_areas":null,"grid_template_columns":null,"grid_template_rows":null,"height":null,"justify_content":null,"justify_items":null,"left":null,"margin":null,"max_height":null,"max_width":null,"min_height":null,"min_width":null,"object_fit":null,"object_position":null,"order":null,"overflow":null,"padding":null,"right":null,"top":null,"visibility":null,"width":null}},"83db5596547f470aad90f3e561c73c2b":{"model_module":"@jupyter-widgets/output","model_module_version":"1.0.0","model_name":"OutputModel","state":{"_dom_classes":[],"_model_module":"@jupyter-widgets/output","_model_module_version":"1.0.0","_model_name":"OutputModel","_view_count":null,"_view_module":"@jupyter-widgets/output","_view_module_version":"1.0.0","_view_name":"OutputView","layout":"IPY_MODEL_e1335703f6a2408195adedda773a0a44","msg_id":"","outputs":[{"data":{"text/html":"<pre style=\"white-space:pre;overflow-x:auto;line-height:normal;font-family:Menlo,'DejaVu Sans Mono',consolas,'Courier New',monospace\">                                                                                                                   \n <span style=\"font-weight: bold\"> Progress                  </span> <span style=\"font-weight: bold\"> Draws </span> <span style=\"font-weight: bold\"> Divergences </span> <span style=\"font-weight: bold\"> Step size </span> <span style=\"font-weight: bold\"> Grad evals </span> <span style=\"font-weight: bold\"> Sampling Speed </span> <span style=\"font-weight: bold\"> Elapsed </span> <span style=\"font-weight: bold\"> Remaining </span> \n ───────────────────────────────────────────────────────────────────────────────────────────────────────────────── \n  <span style=\"color: #1f77b4; text-decoration-color: #1f77b4\">━━━━━━━━━━━━━━━━━━━━━━━━━</span>   2000    0             0.28        15           160.17 draws/s   0:00:12   0:00:00    \n  <span style=\"color: #1f77b4; text-decoration-color: #1f77b4\">━━━━━━━━━━━━━━━━━━━━━━━━━</span>   2000    0             0.26        15           79.46 draws/s    0:00:25   0:00:00    \n  <span style=\"color: #1f77b4; text-decoration-color: #1f77b4\">━━━━━━━━━━━━━━━━━━━━━━━━━</span>   2000    0             0.28        15           52.61 draws/s    0:00:37   0:00:00    \n  <span style=\"color: #1f77b4; text-decoration-color: #1f77b4\">━━━━━━━━━━━━━━━━━━━━━━━━━</span>   2000    0             0.35        15           39.51 draws/s    0:00:50   0:00:00    \n                                                                                                                   \n</pre>\n","text/plain":"                                                                                                                   \n \u001b[1m \u001b[0m\u001b[1mProgress                 \u001b[0m\u001b[1m \u001b[0m \u001b[1m \u001b[0m\u001b[1mDraws\u001b[0m\u001b[1m \u001b[0m \u001b[1m \u001b[0m\u001b[1mDivergences\u001b[0m\u001b[1m \u001b[0m \u001b[1m \u001b[0m\u001b[1mStep size\u001b[0m\u001b[1m \u001b[0m \u001b[1m \u001b[0m\u001b[1mGrad evals\u001b[0m\u001b[1m \u001b[0m \u001b[1m \u001b[0m\u001b[1mSampling Speed\u001b[0m\u001b[1m \u001b[0m \u001b[1m \u001b[0m\u001b[1mElapsed\u001b[0m\u001b[1m \u001b[0m \u001b[1m \u001b[0m\u001b[1mRemaining\u001b[0m\u001b[1m \u001b[0m \n ───────────────────────────────────────────────────────────────────────────────────────────────────────────────── \n  \u001b[38;2;31;119;180m━━━━━━━━━━━━━━━━━━━━━━━━━\u001b[0m   2000    0             0.28        15           160.17 draws/s   0:00:12   0:00:00    \n  \u001b[38;2;31;119;180m━━━━━━━━━━━━━━━━━━━━━━━━━\u001b[0m   2000    0             0.26        15           79.46 draws/s    0:00:25   0:00:00    \n  \u001b[38;2;31;119;180m━━━━━━━━━━━━━━━━━━━━━━━━━\u001b[0m   2000    0             0.28        15           52.61 draws/s    0:00:37   0:00:00    \n  \u001b[38;2;31;119;180m━━━━━━━━━━━━━━━━━━━━━━━━━\u001b[0m   2000    0             0.35        15           39.51 draws/s    0:00:50   0:00:00    \n                                                                                                                   \n"},"metadata":{},"output_type":"display_data"}],"tabbable":null,"tooltip":null}},"84dceebe5c6b43079a3ca195df28ef01":{"model_module":"@jupyter-widgets/output","model_module_version":"1.0.0","model_name":"OutputModel","state":{"_dom_classes":[],"_model_module":"@jupyter-widgets/output","_model_module_version":"1.0.0","_model_name":"OutputModel","_view_count":null,"_view_module":"@jupyter-widgets/output","_view_module_version":"1.0.0","_view_name":"OutputView","layout":"IPY_MODEL_45c9259291ce4ad3a207c41ad30d8e8b","msg_id":"","outputs":[{"data":{"text/html":"<pre style=\"white-space:pre;overflow-x:auto;line-height:normal;font-family:Menlo,'DejaVu Sans Mono',consolas,'Courier New',monospace\">                                                                                                                   \n <span style=\"font-weight: bold\"> Progress                  </span> <span style=\"font-weight: bold\"> Draws </span> <span style=\"font-weight: bold\"> Divergences </span> <span style=\"font-weight: bold\"> Step size </span> <span style=\"font-weight: bold\"> Grad evals </span> <span style=\"font-weight: bold\"> Sampling Speed </span> <span style=\"font-weight: bold\"> Elapsed </span> <span style=\"font-weight: bold\"> Remaining </span> \n ───────────────────────────────────────────────────────────────────────────────────────────────────────────────── \n  <span style=\"color: #1f77b4; text-decoration-color: #1f77b4\">━━━━━━━━━━━━━━━━━━━━━━━━━</span>   2000    0             0.36        15           157.40 draws/s   0:00:12   0:00:00    \n  <span style=\"color: #1f77b4; text-decoration-color: #1f77b4\">━━━━━━━━━━━━━━━━━━━━━━━━━</span>   2000    0             0.27        15           78.49 draws/s    0:00:25   0:00:00    \n  <span style=\"color: #1f77b4; text-decoration-color: #1f77b4\">━━━━━━━━━━━━━━━━━━━━━━━━━</span>   2000    0             0.25        15           51.86 draws/s    0:00:38   0:00:00    \n  <span style=\"color: #1f77b4; text-decoration-color: #1f77b4\">━━━━━━━━━━━━━━━━━━━━━━━━━</span>   2000    0             0.33        15           39.02 draws/s    0:00:51   0:00:00    \n                                                                                                                   \n</pre>\n","text/plain":"                                                                                                                   \n \u001b[1m \u001b[0m\u001b[1mProgress                 \u001b[0m\u001b[1m \u001b[0m \u001b[1m \u001b[0m\u001b[1mDraws\u001b[0m\u001b[1m \u001b[0m \u001b[1m \u001b[0m\u001b[1mDivergences\u001b[0m\u001b[1m \u001b[0m \u001b[1m \u001b[0m\u001b[1mStep size\u001b[0m\u001b[1m \u001b[0m \u001b[1m \u001b[0m\u001b[1mGrad evals\u001b[0m\u001b[1m \u001b[0m \u001b[1m \u001b[0m\u001b[1mSampling Speed\u001b[0m\u001b[1m \u001b[0m \u001b[1m \u001b[0m\u001b[1mElapsed\u001b[0m\u001b[1m \u001b[0m \u001b[1m \u001b[0m\u001b[1mRemaining\u001b[0m\u001b[1m \u001b[0m \n ───────────────────────────────────────────────────────────────────────────────────────────────────────────────── \n  \u001b[38;2;31;119;180m━━━━━━━━━━━━━━━━━━━━━━━━━\u001b[0m   2000    0             0.36        15           157.40 draws/s   0:00:12   0:00:00    \n  \u001b[38;2;31;119;180m━━━━━━━━━━━━━━━━━━━━━━━━━\u001b[0m   2000    0             0.27        15           78.49 draws/s    0:00:25   0:00:00    \n  \u001b[38;2;31;119;180m━━━━━━━━━━━━━━━━━━━━━━━━━\u001b[0m   2000    0             0.25        15           51.86 draws/s    0:00:38   0:00:00    \n  \u001b[38;2;31;119;180m━━━━━━━━━━━━━━━━━━━━━━━━━\u001b[0m   2000    0             0.33        15           39.02 draws/s    0:00:51   0:00:00    \n                                                                                                                   \n"},"metadata":{},"output_type":"display_data"}],"tabbable":null,"tooltip":null}},"e1335703f6a2408195adedda773a0a44":{"model_module":"@jupyter-widgets/base","model_module_version":"2.0.0","model_name":"LayoutModel","state":{"_model_module":"@jupyter-widgets/base","_model_module_version":"2.0.0","_model_name":"LayoutModel","_view_count":null,"_view_module":"@jupyter-widgets/base","_view_module_version":"2.0.0","_view_name":"LayoutView","align_content":null,"align_items":null,"align_self":null,"border_bottom":null,"border_left":null,"border_right":null,"border_top":null,"bottom":null,"display":null,"flex":null,"flex_flow":null,"grid_area":null,"grid_auto_columns":null,"grid_auto_flow":null,"grid_auto_rows":null,"grid_column":null,"grid_gap":null,"grid_row":null,"grid_template_areas":null,"grid_template_columns":null,"grid_template_rows":null,"height":null,"justify_content":null,"justify_items":null,"left":null,"margin":null,"max_height":null,"max_width":null,"min_height":null,"min_width":null,"object_fit":null,"object_position":null,"order":null,"overflow":null,"padding":null,"right":null,"top":null,"visibility":null,"width":null}}},"version_major":2,"version_minor":0}
+</script>
+<script id="quarto-html-after-body" type="application/javascript">
+window.document.addEventListener("DOMContentLoaded", function (event) {
+  const toggleBodyColorMode = (bsSheetEl) => {
+    const mode = bsSheetEl.getAttribute("data-mode");
+    const bodyEl = window.document.querySelector("body");
+    if (mode === "dark") {
+      bodyEl.classList.add("quarto-dark");
+      bodyEl.classList.remove("quarto-light");
+    } else {
+      bodyEl.classList.add("quarto-light");
+      bodyEl.classList.remove("quarto-dark");
+    }
+  }
+  const toggleBodyColorPrimary = () => {
+    const bsSheetEl = window.document.querySelector("link#quarto-bootstrap");
+    if (bsSheetEl) {
+      toggleBodyColorMode(bsSheetEl);
+    }
+  }
+  toggleBodyColorPrimary();  
+  const icon = "";
+  const anchorJS = new window.AnchorJS();
+  anchorJS.options = {
+    placement: 'right',
+    icon: icon
+  };
+  anchorJS.add('.anchored');
+  const isCodeAnnotation = (el) => {
+    for (const clz of el.classList) {
+      if (clz.startsWith('code-annotation-')) {                     
+        return true;
+      }
+    }
+    return false;
+  }
+  const clipboard = new window.ClipboardJS('.code-copy-button', {
+    text: function(trigger) {
+      const codeEl = trigger.previousElementSibling.cloneNode(true);
+      for (const childEl of codeEl.children) {
+        if (isCodeAnnotation(childEl)) {
+          childEl.remove();
+        }
+      }
+      return codeEl.innerText;
+    }
+  });
+  clipboard.on('success', function(e) {
+    // button target
+    const button = e.trigger;
+    // don't keep focus
+    button.blur();
+    // flash "checked"
+    button.classList.add('code-copy-button-checked');
+    var currentTitle = button.getAttribute("title");
+    button.setAttribute("title", "Copied!");
+    let tooltip;
+    if (window.bootstrap) {
+      button.setAttribute("data-bs-toggle", "tooltip");
+      button.setAttribute("data-bs-placement", "left");
+      button.setAttribute("data-bs-title", "Copied!");
+      tooltip = new bootstrap.Tooltip(button, 
+        { trigger: "manual", 
+          customClass: "code-copy-button-tooltip",
+          offset: [0, -8]});
+      tooltip.show();    
+    }
+    setTimeout(function() {
+      if (tooltip) {
+        tooltip.hide();
+        button.removeAttribute("data-bs-title");
+        button.removeAttribute("data-bs-toggle");
+        button.removeAttribute("data-bs-placement");
+      }
+      button.setAttribute("title", currentTitle);
+      button.classList.remove('code-copy-button-checked');
+    }, 1000);
+    // clear code selection
+    e.clearSelection();
+  });
+  function tippyHover(el, contentFn) {
+    const config = {
+      allowHTML: true,
+      content: contentFn,
+      maxWidth: 500,
+      delay: 100,
+      arrow: false,
+      appendTo: function(el) {
+          return el.parentElement;
+      },
+      interactive: true,
+      interactiveBorder: 10,
+      theme: 'quarto',
+      placement: 'bottom-start'
+    };
+    window.tippy(el, config); 
+  }
+  const noterefs = window.document.querySelectorAll('a[role="doc-noteref"]');
+  for (var i=0; i<noterefs.length; i++) {
+    const ref = noterefs[i];
+    tippyHover(ref, function() {
+      // use id or data attribute instead here
+      let href = ref.getAttribute('data-footnote-href') || ref.getAttribute('href');
+      try { href = new URL(href).hash; } catch {}
+      const id = href.replace(/^#\/?/, "");
+      const note = window.document.getElementById(id);
+      return note.innerHTML;
+    });
+  }
+      let selectedAnnoteEl;
+      const selectorForAnnotation = ( cell, annotation) => {
+        let cellAttr = 'data-code-cell="' + cell + '"';
+        let lineAttr = 'data-code-annotation="' +  annotation + '"';
+        const selector = 'span[' + cellAttr + '][' + lineAttr + ']';
+        return selector;
+      }
+      const selectCodeLines = (annoteEl) => {
+        const doc = window.document;
+        const targetCell = annoteEl.getAttribute("data-target-cell");
+        const targetAnnotation = annoteEl.getAttribute("data-target-annotation");
+        const annoteSpan = window.document.querySelector(selectorForAnnotation(targetCell, targetAnnotation));
+        const lines = annoteSpan.getAttribute("data-code-lines").split(",");
+        const lineIds = lines.map((line) => {
+          return targetCell + "-" + line;
+        })
+        let top = null;
+        let height = null;
+        let parent = null;
+        if (lineIds.length > 0) {
+            //compute the position of the single el (top and bottom and make a div)
+            const el = window.document.getElementById(lineIds[0]);
+            top = el.offsetTop;
+            height = el.offsetHeight;
+            parent = el.parentElement.parentElement;
+          if (lineIds.length > 1) {
+            const lastEl = window.document.getElementById(lineIds[lineIds.length - 1]);
+            const bottom = lastEl.offsetTop + lastEl.offsetHeight;
+            height = bottom - top;
+          }
+          if (top !== null && height !== null && parent !== null) {
+            // cook up a div (if necessary) and position it 
+            let div = window.document.getElementById("code-annotation-line-highlight");
+            if (div === null) {
+              div = window.document.createElement("div");
+              div.setAttribute("id", "code-annotation-line-highlight");
+              div.style.position = 'absolute';
+              parent.appendChild(div);
+            }
+            div.style.top = top - 2 + "px";
+            div.style.height = height + 4 + "px";
+            let gutterDiv = window.document.getElementById("code-annotation-line-highlight-gutter");
+            if (gutterDiv === null) {
+              gutterDiv = window.document.createElement("div");
+              gutterDiv.setAttribute("id", "code-annotation-line-highlight-gutter");
+              gutterDiv.style.position = 'absolute';
+              const codeCell = window.document.getElementById(targetCell);
+              const gutter = codeCell.querySelector('.code-annotation-gutter');
+              gutter.appendChild(gutterDiv);
+            }
+            gutterDiv.style.top = top - 2 + "px";
+            gutterDiv.style.height = height + 4 + "px";
+          }
+          selectedAnnoteEl = annoteEl;
+        }
+      };
+      const unselectCodeLines = () => {
+        const elementsIds = ["code-annotation-line-highlight", "code-annotation-line-highlight-gutter"];
+        elementsIds.forEach((elId) => {
+          const div = window.document.getElementById(elId);
+          if (div) {
+            div.remove();
+          }
+        });
+        selectedAnnoteEl = undefined;
+      };
+      // Attach click handler to the DT
+      const annoteDls = window.document.querySelectorAll('dt[data-target-cell]');
+      for (const annoteDlNode of annoteDls) {
+        annoteDlNode.addEventListener('click', (event) => {
+          const clickedEl = event.target;
+          if (clickedEl !== selectedAnnoteEl) {
+            unselectCodeLines();
+            const activeEl = window.document.querySelector('dt[data-target-cell].code-annotation-active');
+            if (activeEl) {
+              activeEl.classList.remove('code-annotation-active');
+            }
+            selectCodeLines(clickedEl);
+            clickedEl.classList.add('code-annotation-active');
+          } else {
+            // Unselect the line
+            unselectCodeLines();
+            clickedEl.classList.remove('code-annotation-active');
+          }
+        });
+      }
+  const findCites = (el) => {
+    const parentEl = el.parentElement;
+    if (parentEl) {
+      const cites = parentEl.dataset.cites;
+      if (cites) {
+        return {
+          el,
+          cites: cites.split(' ')
+        };
+      } else {
+        return findCites(el.parentElement)
+      }
+    } else {
+      return undefined;
+    }
+  };
+  var bibliorefs = window.document.querySelectorAll('a[role="doc-biblioref"]');
+  for (var i=0; i<bibliorefs.length; i++) {
+    const ref = bibliorefs[i];
+    const citeInfo = findCites(ref);
+    if (citeInfo) {
+      tippyHover(citeInfo.el, function() {
+        var popup = window.document.createElement('div');
+        citeInfo.cites.forEach(function(cite) {
+          var citeDiv = window.document.createElement('div');
+          citeDiv.classList.add('hanging-indent');
+          citeDiv.classList.add('csl-entry');
+          var biblioDiv = window.document.getElementById('ref-' + cite);
+          if (biblioDiv) {
+            citeDiv.innerHTML = biblioDiv.innerHTML;
+          }
+          popup.appendChild(citeDiv);
+        });
+        return popup.innerHTML;
+      });
+    }
+  }
+});
+</script>
+</div> <!-- /content -->
+
+
+
+</body></html>

@@ -1,0 +1,163 @@
+---
+title: "Untitled"
+format: html
+---
+
+
+```{python}
+#import gdown
+import polars as pl
+from patsy import dmatrix
+import pymc as pm
+import numpy as np
+import arviz as az
+#import seaborn as sns
+import pandas as pd
+```
+
+
+
+```{python}
+df_field_goals = pl.read_csv("data/field_goal_attempts.csv")
+df_kickers = pl.read_csv("data/kickers.csv")
+
+df = (
+    df_field_goals.join(df_kickers, on="player_id")
+    .rename({"attempt_yards": "distance"})
+    .with_columns(
+        success=pl.when(pl.col("field_goal_result") == "Made")
+        .then(pl.lit(1))
+        .otherwise(pl.lit(0)),
+        player_id=pl.col("player_id").cast(pl.Utf8).cast(pl.Categorical),
+        player_name=pl.col("player_name").cast(pl.Categorical),
+        season_type=pl.col("season_type").cast(pl.Categorical),
+    )
+)
+
+```
+
+```{python}
+df_plot = df.group_by('distance').agg(pl.col('success').sum() / pl.count('success'))
+sns.regplot(x='distance', y='success', data=df_plot, lowess=True)  # lowess=True does a smooth locally weighted regression
+```
+
+
+```{python}
+def prepare_data(df):
+
+    df = df.with_columns(
+        distance_std=(pl.col("distance") - pl.col("distance").mean())
+        / pl.col("distance").std()
+    )
+
+    spline_basis = dmatrix(
+        "bs(distance_std, df=4, degree=3, include_intercept=True) - 1",
+        data=df.to_pandas(),
+        return_type="dataframe",
+    )
+    spline_array = np.asarray(spline_basis, order="F")
+
+    return {
+        "distance": df["distance_std"].to_numpy(),
+        "spline": np.asarray(spline_basis, order="F"),
+        "player": df["player_id"].to_physical().cast(pl.Int64).to_numpy(),
+        "player_cat": df["player_id"].cat.get_categories(),
+        "spline_shape": np.arange(spline_basis.shape[1])
+    }
+
+
+data = prepare_data(df)
+
+COORDS = {
+    "splines": data['spline_shape'],
+    "player_id": data["player_cat"],
+}
+```
+
+
+```{python}
+
+with pm.Model(coords=COORDS) as model:
+
+    distance_data = pm.Data("distance_data", data["distance"])
+    spline_data = pm.Data("spline_data", data["spline"])
+    player_idx = pm.Data("player_idx", data["player"])
+
+    # ------------- PARAMETERS ---------------------------
+    # intercept
+    alpha = pm.Normal("alpha", mu=0, sigma=5)
+
+    # splines
+    sigma_w = pm.HalfStudentT("sigma_w", nu=3, sigma=2.5)
+    w = pm.Normal("w", mu=0, sigma=sigma_w, dims="splines")
+
+    # player effects
+    player_offset = pm.Normal("player_offset", mu=0, sigma=0.5, dims="player_id")
+    sigma = pm.HalfNormal("sigma", sigma=0.5)
+    player_effect = pm.Deterministic('player_effect', player_offset * sigma)
+
+    mu = alpha + player_effect[player_idx] + pm.math.dot(spline_data, w.T)
+    p = pm.Deterministic("p", pm.math.invlogit(mu))
+
+    pm.Bernoulli("y_rep", p=p, observed=df["success"].to_numpy())
+    idata = pm.sample(cores=1, chains=4, target_accept=0.95)
+```
+
+
+```{python}
+df_2018 = (
+    df.filter(pl.col("season") == 2018)
+    .select(["player_id", "player_name"])
+    .unique()
+    .join(
+        pl.DataFrame({"distance": [x for x in range(20, 61)]}).with_columns(
+            distance_std=(pl.col("distance") - pl.col("distance").mean())
+            / pl.col("distance").std()
+        ),
+        how="cross",
+    )
+)
+
+df_2018
+
+```
+
+
+```{python}
+with model2:
+
+
+    df_pred = pm.sample_posterior_predictive(idata, var_names=["p", 'y_rep'], random_seed=123)
+
+az.plot_ppc(df_pred, group='posterior', num_pp_samples=10)
+```
+
+
+```{python}
+with model2:
+    pm.set_data({
+        'player_idx': df_2018['player_id'].to_physical().cast(pl.Int64).to_numpy(),
+        'spline_data': spline_array,
+        'distance_data': df_2018['distance_std'].to_numpy()
+    })
+    pred_2018 = pm.sample_posterior_predictive(idata, var_names=["p"])
+
+```
+
+
+```{python}
+df_output = df_2018.with_row_index("p_dim_0").join(
+    pl.from_pandas(df_pred.posterior_predictive["p"].to_dataframe().reset_index()),
+    on='p_dim_0'
+).with_columns(
+    avg_p = pl.col('p').mean().over(['distance', 'draw'])
+).with_columns(
+    fgoe = pl.col('p') - pl.col('avg_p')
+)
+```
+
+```{python}
+df_output.group_by(['player_name']).agg(
+    pl.col('fgoe').mean()
+).sort('fgoe')
+```

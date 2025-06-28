@@ -1,0 +1,284 @@
+---
+engine: jupyter
+---
+
+
+```{python}
+#| code-fold: true
+import bambi as bmb
+import polars as pl
+import numpy as np
+import arviz as az
+import polars as pl
+import bambi as bmb
+import pandas as pd
+import seaborn as sns
+import matplotlib.pyplot as plt
+
+from utils import (
+    create_grid,
+    create_leaderboard,
+    plot_fgoe,
+    prep_data,
+)
+
+from great_tables import GT, md, html
+
+```
+
+## Overview
+- [Model Setup](#model-setup)
+- [Regular FGOE](#regular-fgoe)
+- [Simulated FGOE](#simulated-fgoe)
+- [Leaderboard](#leaderboard)
+
+This is a notebook that flows linearly the thoughts and ideas I have about the project. I've included other code, and there was several iterations of model testing done before converging on this solution.
+
+
+```{python}
+
+df = prep_data()
+df_model_pd = df.filter(pl.col('season_type') == 'Reg').to_pandas()
+df.glimpse()
+```
+
+With the data, the main field that stand out that would be relevant are `attempt_yards`. Other useful information that could be derived are seasonal effects, age, and differences between regular and preseason.
+
+Included in `R/exploratory_modeling.qmd`, I iterated on different model types - striking a blend between model complexity and performance. The models were tested with leave-one-out (LOO) cross-validation for Bayesian models using Pareto smoothed importance sampling.[^loo]
+
+Players possess varying skill levels that cannot be fully captured through traditional analytics alone. The sparse nature of the available data, combined with the hierarchical structure of the data-generating process, makes this an ideal application for hierarchical modeling approaches.
+
+Assumptions this is built on:
+
+- This is the initial request. The focus is to start effective but simple, and build working with support from scouting teams and other functional areas within the org.
+- Explainability is preferred.
+
+### Model Setup
+
+A powerful yet simple model will be use:
+
+```
+(success | 1) ~ (1 | player_id) + s(distance)
+```
+
+More detaile below, but the high level overview:
+- Bernoulli likelihood for binary event
+- Partially pooled intercepts for each player
+- applying a spline to the distance
+
+```{python}
+s = "bs(distance, df=4, intercept=False)"
+priors = {
+    s: bmb.Prior("StudentT", nu=3, mu=0, sigma=0.5),
+    "1|player_id": bmb.Prior(
+        "StudentT", nu=3, mu=0, sigma=bmb.Prior("HalfNormal", sigma=0.5)
+    ),
+}
+
+
+model = bmb.Model(
+    f"success ~ (1|player_id) + {s}",
+    data=df_model_pd,
+    family="bernoulli",
+    priors=priors,
+)
+
+model
+
+```
+
+This model generates player-specific intercepts that adapt based on individual performance and data availability. Players with more observations will have their estimates pulled toward their own performance, while those with limited data will remain closer to the population prior. The shared variance across all players is shared to create partial pooling. This shared information between players and prior help improve estimates for those with limited data.
+
+```{python}
+# spline caused issue with multiprocessing, too much to debug for a weekend
+idata = model.fit(draws=1000, chains=4, cores=1)
+az.plot_trace(idata)
+```
+
+It's important in Bayesian models to check the diagnostics. This doesn't account for causality or any of the domain specific modeling checks, but ensures that the MCMC algorithm is working as expected. All chains converged without divergent transitions, effective sample size is strong.
+
+#### Spline
+
+```{python}
+az.summary(idata, var_names=["Intercept", s])
+```
+
+```{python}
+#| code-fold: true
+idata.posterior[s].to_dataframe()
+
+w = idata.posterior[s].mean(("chain", "draw")).values
+
+spline_basis = pd.DataFrame(model.components["p"].design.common[s])
+
+df_spline = (spline_basis * w.T).assign(distance = df_model_pd['distance']).melt("distance", var_name="basis_idx", value_name="value").assign(basis_idx = lambda x: x['basis_idx'].astype(str)).query('distance > 20')
+```
+
+```{python}
+
+sns.lineplot(df_spline, x='distance', y='value', hue='basis_idx')
+
+```
+
+Combining them together produces the estimated effect
+
+```{python}
+sns.lineplot(df_spline.groupby("distance")["value"].mean())
+```
+
+## FGOE
+
+### Regular FGOE
+
+What I outlined in my application was to establish at minimum a Field Goal Over Expected model. This contextualizes the kick, and helps identify players over or underperforming relative to expectation. This is used across multiple sports because the metric is intuitive and easily digestable. Especially coming from a background with less analytical training.
+
+```{python}
+df_2018 = df_model_pd[df_model_pd["season"] == 2018]
+
+df_goe = model.predict(idata, data=df_2018, inplace=False)
+
+idata_fgoe = (
+    df_goe["posterior"]["p"]
+    .to_dataframe()
+    .reset_index()
+    .merge(df_2018.assign(__obs__=lambda x: np.arange(x.shape[0])), on="__obs__")
+    .assign(fgoe=lambda x: x["success"] - x["p"])[
+        ["chain", "draw", "fgoe", "player_name", "__obs__"]
+    ]
+    .groupby(["chain", "draw", "player_name"], observed=True)
+    .agg({"fgoe": "sum"})
+    .to_xarray()
+)
+
+plot_fgoe(idata_fgoe, "Field Goal Over Expected (FGOE) by Player - Blocks Removed")
+```
+
+Justin Tucker is the 20th best kicker?! At the time in 2018, pitching this model would be difficult, and rightfully so.
+
+The problem with using this alone, is that in a limited sample size - there can be a lot of noise. Checking in on the dataset, there was a blocked field goal against Tucker. Outside the scope of this analysis, but its uncertain how much credit should be assigned to the kicker vs blocking. If we remove blocked kicks, the model looks more in line with what we would expect.
+
+```{python}
+
+idata_fgoe_no_block = (
+    df_goe["posterior"]["p"]
+    .to_dataframe()
+    .reset_index()
+    .merge(
+        df_2018[~df_2018["field_goal_result"].isin(["Blocked"])].assign(
+            __obs__=lambda x: np.arange(x.shape[0])
+        ),
+        on="__obs__",
+    )
+    .assign(fgoe=lambda x: x["success"] - x["p"])[
+        ["chain", "draw", "fgoe", "player_name", "__obs__"]
+    ]
+    .groupby(["chain", "draw", "player_name"], observed=True)
+    .agg({"fgoe": "sum"})
+    .to_xarray()
+)
+
+plot_fgoe(
+    idata_fgoe_no_block, "Field Goal Over Expected (FGOE) by Player - Blocks Removed"
+)
+
+```
+
+That however is arbitrary, and a more robust solution is needed.
+
+---
+
+#### Simulated FGOE
+
+The model chosen allows us to take the parameter of the player's intercept, after accounting for the distance of the kick. This lets us look at what-if scenarios, and project out past the observed data. What if we model kickers on the same set of kicks. We then have a way to accont for what we can expect each kicker to make.
+
+I chose linear values of kicks from 25-60 yards. Part of this is simplicity, it is easy to explain and the first step towards getting organizational buy-in from the model.
+
+
+```{python}
+# This creates a grid of kicks for the players in 2018
+df_grid_18 = create_grid(df_model_pd)
+```
+
+```{python}
+# Get posterior predictions without group effects
+avg_preds = model.predict(
+    idata, data=df_grid_18, inplace=False, include_group_specific=False
+)
+
+# posterior predictions on grid
+preds = model.predict(idata, data=df_grid_18, inplace=False)
+
+df_pred = preds.posterior["p"].to_dataframe().reset_index()
+df_avg_pred = avg_preds["posterior"]["p"].to_dataframe().reset_index()
+
+# take the predictions form the players and subtract the posterior predictions without group effects. This provides the main source of the metric for simulated FGOE
+df_fgoe = (
+    df_pred.merge(df_avg_pred, on=["chain", "draw", "__obs__"], how="inner")
+    .merge(
+        df_grid_18[["player_id", "player_name", "distance", "__obs__"]],
+        on=["__obs__"],
+        how="left",
+    )
+    .assign(fgoe=lambda x: x["p_x"] - x["p_y"])
+)
+
+# polars makes dataframe go brrr
+df_output = (
+    pl.from_pandas(df_fgoe)
+    .group_by(["player_id", "player_name", "draw", "chain"])
+    .agg(pl.col("fgoe").sum())
+)
+
+
+```
+
+With the simulation of kicks, we can now look at a *Simulated* FGOE. This is on a scale of the number of draws in our posterior samples, and each player has 4000 simulations across a distribution of kicks. This provides the ability to quantify uncertainty within our estimate and look at range of outcomes. (also much better than sample sizes of ~6 kicks!)
+
+
+```{python}
+idata_post = df_output.to_pandas().set_index(['chain', 'draw', 'player_name']).to_xarray()
+
+
+plot_fgoe(idata_post, "Simulated FGOE")
+```
+
+To compare the raw vs simulated FGOE, we can look at the posterior distributions between the two approachs. Note: they aren't necesarily 1:1 comparisons of the same scale, because in the raw version we are limited to the kicks that the kicker attempted. What is more important is to look directionally at what the simulated model does compared to the regular. Easily shown is Justin Tucker is firmly at the top of the list, without having to adjust arbitrarily for blocked kicks.
+
+```{python}
+
+fgoe_mean = idata_post["fgoe"].mean(("chain", "draw")) * -1
+
+axs = az.plot_forest(
+    [idata_post.sortby(fgoe_mean), idata_fgoe.sortby(fgoe_mean)],
+    var_names=["fgoe"],
+    model_names=["Simulated", "Regular"],
+    combined=True,
+)
+ax = axs[0]
+ax.axvline(x=0, color="black", linestyle="--", linewidth=1)
+ax.set_title("Comparison")
+ax.set_xlabel("FGOE")
+ax.tick_params(axis="y", labelsize=8)
+```
+
+## Leaderboard
+
+```{python}
+leaderboard = create_leaderboard(df_output, idata_post)
+```
+
+
+```{python}
+
+
+(
+    GT(pl.concat([leaderboard.head(10), leaderboard.tail(10)]))
+    .tab_header(title="2018 NFL Kicker Leaderboard")
+    .tab_spanner(label="Simulated FGOE", columns=["rating", "sd", "hdi_5%", "hdi_95%"])
+    .fmt_number(columns=["rating", "sd", "hdi_5%", "hdi_95%"], decimals=2)
+    .fmt_percent('top_5', decimals=1)
+)
+
+```
+
+[^loo]: https://mc-stan.org/loo/reference/loo.html
