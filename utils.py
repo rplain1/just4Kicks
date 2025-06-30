@@ -163,8 +163,8 @@ def create_leaderboard(df: pl.DataFrame, idata: az.InferenceData) -> pl.DataFram
                 .reset_index()
                 .assign(player_name=lambda x: x["index"].str.extract(r"fgoe\[(.+)\]"))
             )
-            .sort(["mean"], descending=True)
             .join(df_top_5, on="player_name")
+            .sort(["mean"], descending=True)
             .with_row_index("rank", offset=1)
             .rename({"mean": "rating"})
             .join(

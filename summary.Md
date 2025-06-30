@@ -1,0 +1,1 @@
+Included in `R/exploratory_modeling.qmd`, I iterated on different model types - striking a blend between model complexity and performance. The models were tested with leave-one-out (LOO) cross-validation.
