@@ -489,7 +489,7 @@ p1 = title_name(pointrange_data(df_fgoe))
     + theme(
         legend_position="none",
         axis_title_y=element_blank(),
-        figure_size=(6, 6),
+        figure_size=(6, 8),
         dpi=100,
         panel_grid_minor=element_blank(),
         panel_grid_major_y=element_blank(),
@@ -549,7 +549,7 @@ df_before = title_name(df_before)
     + theme(
         legend_position="none",
         axis_title_y=element_blank(),
-        figure_size=(6, 6),
+        figure_size=(6, 8),
         dpi=100,
         panel_grid_minor=element_blank(),
         panel_grid_major_y=element_blank(),
@@ -610,7 +610,7 @@ p2 = title_name(pointrange_data(df_fgoe_no_block))
     + theme(
         legend_position="none",
         axis_title_y=element_blank(),
-        figure_size=(6, 6),
+        figure_size=(6, 8),
         dpi=100,
         panel_grid_minor=element_blank(),
         panel_grid_major_y=element_blank(),
@@ -676,7 +676,7 @@ With the simulation of kicks, we can now look at a **Simulated FGOE**. This oper
 
 The plot below shows the posterior distributions of simulated FGOE. Compared to the traditional version, this metric is more stable and less noisy, and it follows intuitive principles that make interpretation easier. Many players cluster around zero, roughly representing replacement level, while deviations in either direction are easy to interpret.
 
-For example, saying that Justin Tucker’s FGOE is between 1 and 4 field goals over expected is far more interpretable than stating that _the log-odds of the player’s intercept increases by 0.2 and 0.8_.
+For example, saying that Justin Tucker’s FGOE is between 1 and 4 field goals over expected is far more interpretable than stating that _the log-odds of the player’s intercept increases by a value between 0.2 and 0.8_.
 
 ```{python}
 # | code-fold: true
@@ -700,7 +700,7 @@ p3 = title_name(pointrange_data(df_output))
     + theme(
         legend_position="none",
         axis_title_y=element_blank(),
-        figure_size=(8, 8),
+        figure_size=(6, 8),
         dpi=100,
         panel_grid_minor=element_blank(),
         panel_grid_major_y=element_blank(),
