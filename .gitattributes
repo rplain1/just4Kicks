@@ -1,0 +1,3 @@
+# Ignore rendered Quarto HTML from language stats
+*.html linguist-generated
+kicker_model_files/** linguist-generated
