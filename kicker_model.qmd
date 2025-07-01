@@ -99,6 +99,9 @@ def create_grid(df: pd.DataFrame) -> pd.DataFrame:
     return df_grid_18
 
 
+palette = ["#001e42", "#535c78", "#9fa3b3", "#f1f1f1", "#ffbea4", "#ff895a", "#ff4b00"]
+
+
 def pointrange_data(
     df: pl.DataFrame | pd.DataFrame,
     field: str = "fgoe",
@@ -149,7 +152,7 @@ def pointrange_data(
         .drop(["hdi_90", "hdi_50"])
         .with_columns(
             highlight=pl.when(pl.col("player_name") == "JUSTIN TUCKER").then(
-                pl.lit("red")
+                pl.lit(palette[-1])
             )
             # .when(pl.col("player_name") == "ROBERTO AGUAYO")
             # .then(pl.lit("blue"))
@@ -161,6 +164,23 @@ def pointrange_data(
     return data
 
 
+def title_name(df: pl.DataFrame | pd.DataFrame):
+    """
+    Title case names, primarily for plots.
+    """
+    if isinstance(df, pl.DataFrame):
+        return df.with_columns(pl.col("player_name").cast(pl.Utf8).str.to_titlecase())
+    elif isinstance(df, pd.DataFrame):
+        return df.assign(player_name=lambda x: x.player_name.str.title())
+    else:
+        raise ValueError
+
+
+def get_jt(df):
+    shape = df.shape[0]
+    var = df.with_row_index().filter(pl.col("player_name") == "Justin Tucker")['index'][0]
+
+    return shape - var
 ```
 
 ### Data
@@ -184,14 +204,14 @@ There is clear evidence of a non-linear relationship between kick distance and s
 df_plot = df.group_by("distance").agg(pl.col("success").sum() / pl.count("success"))
 (
     ggplot(df_plot, aes("distance", "success"))
-    + geom_smooth()
-    + geom_point(alpha = 0.2)
+    + geom_smooth(color = palette[0])
+    + geom_point(alpha = 0.2, color=palette[0])
     + labs(
         title="Success Rate by Distance - Observed Data",
         x="Attempt Distance (yards)",
         y="Success Rate",
     )
-    + theme_bw()
+    + theme_minimal()
 )
 
 ```
@@ -251,7 +271,7 @@ model = bmb.Model(
     priors=priors,
     # default but critical
     center_predictors=True, # better numerical stability
-    noncentered=True # non-centered parameterization helps with hard to sample geometries
+    noncentered=True, # non-centered parameterization helps with hard to sample geometries
 )
 
 model
@@ -266,7 +286,7 @@ After specifying the model structure and priors, a diagnostic tool in prior pred
 ```{python}
 #| code-fold: true
 model.build();
-model.plot_priors();
+model.plot_priors(random_seed=527);
 ```
 
 #### Prior predictive checks
@@ -283,26 +303,37 @@ df_prior = pl.from_pandas(
         aes(group="draw", color="t"),
         position="identity",
         fill=None,
-        # color="#00000013",
         alpha=0.01,
-        data=df_prior.group_by(["draw", "success"])
-        .len()
-        .with_columns(t=pl.lit("prior")),
+        data=(
+            df_prior.group_by(["draw", "success"])
+            .len()
+            .with_columns(t=pl.lit("prior predictive"))
+        ),
     )
     + geom_col(
         aes(color="t"),
         fill=None,
-        #width = 0.5,
-        #alpha = 0.1,
         size=1.5,
-        data=df.group_by(["success"]).len().with_columns(t=pl.lit("observed")),
+        data=(
+            df_prior.group_by(["draw", "success"])
+            .len()
+            .group_by("success")
+            .agg(pl.col("len").mean())
+            .with_columns(t=pl.lit("prior predictive mean"))
+        ),
     )
-    + theme_bw()
-    + labs(title="Prior Predictive Checks", x="Success", y="Count", color='')
+    + theme_minimal()
+    + labs(title="Prior Predictive Checks", x="Success", y="Count", color="")
     + scale_x_continuous(breaks=[0, 1])
-    + theme(panel_grid_minor=element_blank(), panel_grid_major_x=element_blank(), legend_position=(0.1,1), legend_background=element_blank())
-    + scale_color_manual(values=("#00000013", 'coral'))
+    + theme(
+        panel_grid_minor=element_blank(),
+        panel_grid_major_x=element_blank(),
+        legend_position=(0.1, 1),
+        legend_background=element_blank(),
+    )
+    + scale_color_manual(values=(palette[2], palette[-1]))
 )
+
 ```
 
 The results from the prior predictive check suggest that the priors lead to outcomes consistent with the expectation, indicating that the model has a plausible data-generating process.
@@ -373,8 +404,9 @@ df_spline = (
     ggplot(df_spline, aes("distance", "value", color="factor(basis_idx)"))
     + geom_line(size = 1.2)
     + labs(title="Basis Function Shape", color="bf")
-    + theme_bw()
+    + theme_minimal()
     + theme(legend_position="top")
+    + labs(x = 'Distance', y = 'Value')
 )
 ```
 
@@ -386,9 +418,10 @@ Finally, they can be aggregated together to produce the estimated effect of dist
 # | code-fold: true
 (
     ggplot(df_spline.groupby("distance", as_index=False)["value"].mean())
-    + geom_line(aes("distance", "value"), size = 1.2)
+    + geom_line(aes("distance", "value"), size=1.2, color=palette[0])
     + labs(title="General Spline Shape")
-    + theme_bw()
+    + theme_minimal()
+    + labs(x="Distance", y="Value")
 )
 ```
 
@@ -430,12 +463,15 @@ df_fgoe = (
 ```
 
 ```{python}
-#| code-fold: true
+# | code-fold: true
+p1 = title_name(pointrange_data(df_fgoe))
 (
     ggplot(
-        pointrange_data(df_fgoe),
+        title_name(pointrange_data(df_fgoe)),
         aes("reorder(player_name, fgoe)", "fgoe", color="highlight"),
     )
+    + geom_hline(yintercept=0, linetype="solid")
+    #+ geom_vline(xintercept=36, linetype="dotted", color="#ff895a")
     + geom_linerange(
         aes(ymin="hdi_lower", ymax="hdi_upper"),
         size=1.2,
@@ -443,15 +479,23 @@ df_fgoe = (
     + geom_pointrange(aes(ymin="ymin", ymax="ymax"), shape="o", fill="white")
     + coord_flip()
     + scale_color_identity()
+    # scale_color_manual(values=("#9fa3b3", "#ff4b00"))
     + labs(
         title="Field Goal Over Expected (FGOE)",
         subtitle="2018",
         y="Traditional FGOE",
     )
-    + theme_bw()
-    + theme(legend_position="none", axis_title_y=element_blank(), figure_size=(6, 6), dpi=100, panel_grid_minor=element_blank(), panel_grid_major_y=element_blank(), axis_text_y=element_text(size=6, weight='bold'))
-    + geom_hline(yintercept=0, linetype="dashed")
-
+    + theme_minimal()
+    + theme(
+        legend_position="none",
+        axis_title_y=element_blank(),
+        figure_size=(6, 6),
+        dpi=100,
+        panel_grid_minor=element_blank(),
+        panel_grid_major_y=element_blank(),
+        axis_text_y=element_text(size=8),
+    )
+     + geom_vline(xintercept=get_jt(p1), linetype="dotted", color="#ff895a")
 )
 ```
 
@@ -467,7 +511,9 @@ df_before = df_model_pd[df_model_pd["season"].isin([2016, 2017])]
 
 df_before = pointrange_data(
     (
-        model.predict(idata, data=df_before, inplace=False, include_group_specific=False)["posterior"]["p"]
+        model.predict(
+            idata, data=df_before, inplace=False, include_group_specific=False
+        )["posterior"]["p"]
         .to_dataframe()
         .reset_index()
         .merge(df_before.assign(__obs__=lambda x: np.arange(x.shape[0])), on="__obs__")
@@ -480,11 +526,13 @@ df_before = pointrange_data(
     )
 )
 
+df_before = title_name(df_before)
 (
     ggplot(
         df_before,
         aes("reorder(player_name, fgoe)", "fgoe", color="highlight"),
     )
+    + geom_hline(yintercept=0, linetype="dashed")
     + geom_linerange(
         aes(ymin="hdi_lower", ymax="hdi_upper"),
         size=1.2,
@@ -497,7 +545,7 @@ df_before = pointrange_data(
         subtitle="2016 - 2017 | Justin Tucker has been one of the best",
         y="Traditional FGOE",
     )
-    + theme_bw()
+    + theme_minimal()
     + theme(
         legend_position="none",
         axis_title_y=element_blank(),
@@ -505,9 +553,9 @@ df_before = pointrange_data(
         dpi=100,
         panel_grid_minor=element_blank(),
         panel_grid_major_y=element_blank(),
-        axis_text_y=element_text(size=6, weight="bold"),
+        axis_text_y=element_text(size=8),
     )
-    + geom_hline(yintercept=0, linetype="dashed")
+    + geom_vline(xintercept=get_jt(df_before), linetype="dotted", color="#ff895a")
 )
 ```
 
@@ -539,11 +587,13 @@ df_fgoe_no_block = (
     .reset_index()
 )
 
+p2 = title_name(pointrange_data(df_fgoe_no_block))
 (
     ggplot(
-        pointrange_data(df_fgoe_no_block),
+        p2,
         aes("reorder(player_name, fgoe)", "fgoe", color="highlight"),
     )
+    + geom_hline(yintercept=0, linetype="dashed")
     + geom_linerange(
         aes(ymin="hdi_lower", ymax="hdi_upper"),
         size=1.2,
@@ -556,7 +606,7 @@ df_fgoe_no_block = (
         subtitle="2018 | Removing blocked kicks",
         y="Traditional FGOE",
     )
-    + theme_bw()
+    + theme_minimal()
     + theme(
         legend_position="none",
         axis_title_y=element_blank(),
@@ -564,9 +614,9 @@ df_fgoe_no_block = (
         dpi=100,
         panel_grid_minor=element_blank(),
         panel_grid_major_y=element_blank(),
-        axis_text_y=element_text(size=6, weight="bold"),
+        axis_text_y=element_text(size=8),
     )
-    + geom_hline(yintercept=0, linetype="dashed")
+    + geom_vline(xintercept=get_jt(p2), linetype="dotted", color="#ff895a")
 )
 
 ```
@@ -630,11 +680,13 @@ For example, saying that Justin Tucker’s FGOE is between 1 and 4 field goals o
 
 ```{python}
 # | code-fold: true
+p3 = title_name(pointrange_data(df_output))
 (
     ggplot(
-        pointrange_data(df_output),
+        p3,
         aes("reorder(player_name, fgoe)", "fgoe", color="highlight"),
     )
+    + geom_hline(yintercept=0, linetype="dashed")
     + geom_pointrange(aes(ymin="ymin", ymax="ymax"))
     + geom_linerange(aes(ymin="hdi_lower", ymax="hdi_upper"), size=1.5)
     + coord_flip()
@@ -644,17 +696,17 @@ For example, saying that Justin Tucker’s FGOE is between 1 and 4 field goals o
         subtitle="2018",
         y="Simulated FGOE",
     )
-    + theme_bw()
+    + theme_minimal()
     + theme(
         legend_position="none",
         axis_title_y=element_blank(),
-        figure_size=(6, 6),
+        figure_size=(8, 8),
         dpi=100,
         panel_grid_minor=element_blank(),
         panel_grid_major_y=element_blank(),
-        axis_text_y=element_text(size=6, weight="bold"),
+        axis_text_y=element_text(size=8),
     )
-    + geom_hline(yintercept=0, linetype="dashed")
+    + geom_vline(xintercept=get_jt(p3), linetype="dotted", color="#ff895a")
 )
 ```
 
@@ -689,6 +741,7 @@ df_comparison_r = pointrange_data(
     on=["player_id", "player_name"],
 )
 
+df_comparison_r = title_name(df_comparison_r)
 (
     ggplot(
         df_comparison_r, aes("reorder(player_name, plot_sort)", "fgoe", color="model")
@@ -700,22 +753,21 @@ df_comparison_r = pointrange_data(
         aes(ymin="ymin", ymax="ymax"),
         shape="o",
         fill="white",
-        position=position_dodge(0.5),
+        position=position_dodge(0.75),
     )
     + coord_flip()
-    + scale_color_manual(values=["grey","black"])
     + labs(
         y="Simulated FGOE",
     )
-    + theme_bw()
+    + theme_minimal()
     + theme(
         legend_position="top",
         axis_title_y=element_blank(),
-        figure_size=(7, 7),
+        figure_size=(6, 8),
         dpi=100,
         panel_grid_minor=element_blank(),
         panel_grid_major_y=element_blank(),
-        axis_text_y=element_text(size=6, weight="bold"),
+        axis_text_y=element_text(size=8),
     )
     + geom_hline(yintercept=0, linetype="dashed")
     + labs(
@@ -723,6 +775,7 @@ df_comparison_r = pointrange_data(
         y="Simulated FGOE",
         color="Model:",
     )
+    + scale_color_manual(("#001e42", "#ff4b00"))
 )
 ```
 
@@ -743,11 +796,10 @@ plot_df = pl.from_pandas(
     ggplot(aes("distance", "p_x", color="player_name"))
     + geom_ribbon(
         aes(y="fgoe", ymin="ymin", ymax="ymax", fill="player_name"),
-        # fill="#00000033",
         data=pointrange_data(plot_df, field="p_x", group=["player_name", "distance"]),
         alpha=0.2,
         outline_type=element_blank(),
-        show_legend={"fill": False},
+        show_legend={"color": False},
     )
     + geom_ribbon(
         aes(y="fgoe", ymin="hdi_lower", ymax="hdi_upper", fill="player_name"),
@@ -755,23 +807,24 @@ plot_df = pl.from_pandas(
         data=pointrange_data(plot_df, field="p_x", group=["player_name", "distance"]),
         alpha=0.4,
         outline_type=element_blank(),
-        show_legend={"fill": False},
+        show_legend={"color": False},
     )
     + geom_line(
         data=plot_df.group_by(["player_name", "distance"]).agg(pl.col("p_x").mean()),
         size=1.5,
+        show_legend=False
     )
-    + theme_bw()
+    + theme_minimal()
     + theme(legend_position="top", panel_grid_minor=element_blank())
     + labs(
         title="Modeled Probability by Distance",
         y="P(Make)",
         x="Distance",
-        color="Player:",
+        fill="Player:",
     )
     + scale_x_continuous(limits=(25, 60))
-    + scale_color_manual(values=("midnightblue", "firebrick"))
-    + scale_fill_manual(values=("midnightblue", "firebrick"))
+    + scale_color_manual(values=("#ff4b00", "#001e42"))
+    + scale_fill_manual(values=("#ff4b00", "#001e42"))
 )
 ```
 
@@ -863,25 +916,25 @@ leaderboard.write_csv("leaderboard.csv")
     .data_color(
         columns=["rating"],
         domain=[leaderboard["rating"].min(), leaderboard["rating"].max()],
-        palette=["rebeccapurple", "white", "green"],
+        palette=["#535c78", "white", "#ff4b00"],
         na_color="white",
     )
     .data_color(
         columns=["lower"],
         domain=[leaderboard["hdi_5%"].min(), leaderboard["hdi_5%"].max()],
-        palette=["rebeccapurple", "white", "green"],
+        palette=["#535c78", "white", "#ff4b00"],
         na_color="white",
     )
     .data_color(
         columns=["upper"],
         domain=[leaderboard["hdi_95%"].min(), leaderboard["hdi_95%"].max()],
-        palette=["rebeccapurple", "white", "green"],
+        palette=["#535c78", "white", "#ff4b00"],
         na_color="white",
     )
     .data_color(
         columns=["top_5"],
         domain=[0, 1],
-        palette=["white", "green"],
+        palette=["white", "#ff4b00"],
         na_color="white",
     )
     .cols_label(
