@@ -11,7 +11,6 @@ wheels/
 
 *.parquet
 *.rds
-sumary_files/
-summary.Md
+*.Md
 .env
 .DS_Store

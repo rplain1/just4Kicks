@@ -39,59 +39,9 @@ import polars as pl
 import bambi as bmb
 import pandas as pd
 
-from arviz.labels import BaseLabeller
-
 from great_tables import GT, md, html
 
 from plotnine import *
-
-
-# This is from an LLM
-class PlayerOnlyLabeller(BaseLabeller):
-    def make_label_flat(self, var_name, coord_values=(), dims=(), index=None):
-        # coord_values is a dict or list of tuples — try to extract the player name
-        if isinstance(coord_values, dict):
-            return coord_values.get("player_name", var_name)
-        elif isinstance(coord_values, (list, tuple)) and coord_values:
-            return coord_values[0][1]  # (dim_name, value)
-        else:
-            return var_name
-
-
-def plot_fgoe(idata_fgoe, title, highlight=None, **kwargs):
-    fgoe_mean = idata_fgoe["fgoe"].mean(("chain", "draw"))
-    sorted_idata = idata_fgoe.sortby(fgoe_mean * -1)
-    player_names = sorted_idata["player_name"].values.astype(str)
-
-    axs = az.plot_forest(
-        sorted_idata,
-        var_names=["fgoe"],
-        combined=True,
-        labeller=PlayerOnlyLabeller(),
-        **kwargs,
-    )
-
-    ax = axs[0]
-    ax.axvline(x=0, color="black", linestyle="--", linewidth=1)
-    ax.set_title(title)
-    ax.set_xlabel("FGOE")
-    ax.tick_params(axis="y", labelsize=10)
-
-    # Highlight player(s)
-    if highlight is not None:
-        if isinstance(highlight, str):
-            highlight = [highlight]
-        highlight_set = set(highlight)
-
-        # Y-axis tick labels are reversed from player_names
-        yticks = ax.get_yticklabels()
-        for i, label in enumerate(player_names[::-1]):
-            if label in highlight_set:
-                yticks[i].set_color("crimson")
-                yticks[i].set_fontweight("bold")
-
-    return ax
-
 
 def prep_data() -> pl.DataFrame:
     """
@@ -465,7 +415,7 @@ df_fgoe = (
     + labs(
         title="Field Goal Over Expected (FGOE)",
         subtitle="2018",
-        y="Simulated FGOE",
+        y="Traditional FGOE",
     )
     + theme_bw()
     + theme(legend_position="none", axis_title_y=element_blank(), figure_size=(6, 6), dpi=100, panel_grid_minor=element_blank(), panel_grid_major_y=element_blank(), axis_text_y=element_text(size=6, weight='bold'))
@@ -514,7 +464,7 @@ df_before = pointrange_data(
     + labs(
         title="Field Goal Over Expected (FGOE)",
         subtitle="2016 - 2017 | Justin Tucker has typically been one of the better kickers",
-        y="Simulated FGOE",
+        y="Traditional FGOE",
     )
     + theme_bw()
     + theme(
@@ -572,7 +522,7 @@ df_fgoe_no_block = (
     + labs(
         title="Field Goal Over Expected (FGOE)",
         subtitle="2018 | Removing blocked kicks",
-        y="Simulated FGOE",
+        y="Traditional FGOE",
     )
     + theme_bw()
     + theme(
@@ -589,8 +539,7 @@ df_fgoe_no_block = (
 
 ```
 
-However, that approach is arbitrary, a more robust solution is needed.
-
+However, this approach is arbitrary as it requires manual intervention and doesn't provide a way to account for such events within the model itself, highlighting the need for a better solution.
 ---
 
 ### Simulated FGOE
@@ -680,7 +629,7 @@ For example, saying that Justin Tucker’s FGOE is between 1 and 4 field goals o
 To compare the traditional vs simulated FGOE, we can look at the posterior distributions between the two approaches.
 
 ::: {.callout-note}
-The models aren't necesarily 1:1 comparisons of the same distribution of kicks, because in the traditional version we are limited to the kicks that the kicker attempted. What is more important is to look directionally at what the simulated model does compared to the traditional. Easily shown is Justin Tucker is firmly at the top of the list, without having to adjust arbitrarily for blocked kicks.
+The models aren't necesarily 1:1 comparisons of the same distribution of kicks, because with the traditional FGOE we are limited to the kicks that the kicker attempted. Simulated FGOE is applied to the same set of kicks for each kicker. It is more important to look directionally at each model. Easily shown is Justin Tucker is firmly at the top of the list, without having to adjust arbitrarily for blocked kicks.
 :::
 
 
@@ -736,7 +685,7 @@ df_comparison_r = pointrange_data(
     )
     + geom_hline(yintercept=0, linetype="dashed")
     + labs(
-        title="Simulated Field Goal Over Expected (FGOE)",
+        title="Simulated vs Traditional FGOE",
         y="Simulated FGOE",
         color="Model:",
     )
@@ -794,7 +743,7 @@ plot_df = pl.from_pandas(
 
 ## Leaderboard
 
-The table below presents the generated leaderboard, showcasing the player_id, player_name, rating (Simulated FGOE), and rank for the top 10 and bottom 10 kickers evaluated by the model. The rank column is in ascending order, where a lower rank indicates a better performance.
+The table below presents the generated leaderboard, showcasing the player_id, player_name, rating (Simulated FGOE), and rank for the top 10 and bottom 10 kickers evaluated by the model. The *rank* column is in ascending order, where a lower rank indicates a better performance. The *Top 5* column indicates the percentage of simulations in which a player ranked among the top 5 kickers, offering a probabilistic measure of their elite performance.
 
 ```{python}
 # | code-fold: true
