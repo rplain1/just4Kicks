@@ -47,6 +47,7 @@ from great_tables import GT, md, html
 
 from plotnine import *
 
+
 # This is from an LLM
 class PlayerOnlyLabeller(BaseLabeller):
     def make_label_flat(self, var_name, coord_values=(), dims=(), index=None):
@@ -147,32 +148,52 @@ def create_grid(df: pd.DataFrame) -> pd.DataFrame:
 
     return df_grid_18
 
-def pointrange_data(df: pl.DataFrame | pd.DataFrame, field = 'fgoe') -> pl.DataFrame:
+
+def pointrange_data(
+    df: pl.DataFrame | pd.DataFrame, field="fgoe", group=["player_id", "player_name"]
+) -> pl.DataFrame:
 
     if isinstance(df, pd.DataFrame):
         df = pl.from_pandas(df)
 
+    # Custom function to extract HDI bounds
+    def hdi_bounds(values, prob=0.9):
+        hdi_result = az.hdi(values.to_numpy(), hdi_prob=prob)
+        return hdi_result[0], hdi_result[1]  # lower, upper
+
+    def hdi_bounds_50(values):
+        hdi_result = az.hdi(values.to_numpy(), hdi_prob=0.5)
+        return hdi_result[0], hdi_result[1]  # lower, upper
+
     data = (
-        df_output.group_by(["player_id", "player_name"])
+        df.group_by(group)
         .agg(
             fgoe=pl.col(field).mean(),
-            ymin=pl.col(field).quantile(0.05),
-            ymax=pl.col(field).quantile(0.95),
+            hdi_90=pl.col(field).map_elements(
+                lambda x: hdi_bounds(x, 0.9), return_dtype=pl.List(pl.Float64)
+            ),
+            hdi_50=pl.col(field).map_elements(
+                lambda x: hdi_bounds_50(x), return_dtype=pl.List(pl.Float64)
+            ),
         )
+        .with_columns(
+            ymin=pl.col("hdi_90").list.get(0),
+            ymax=pl.col("hdi_90").list.get(1),
+            hdi_lower=pl.col("hdi_50").list.get(0),
+            hdi_upper=pl.col("hdi_50").list.get(1),
+        )
+        .drop(["hdi_90", "hdi_50"])
         .with_columns(
             highlight=pl.when(pl.col("player_name") == "JUSTIN TUCKER")
             .then(pl.lit("red"))
-            .when(pl.col("player_name") == "ROBERTO AGUAYO")
-            .then(pl.lit("blue"))
+            #.when(pl.col("player_name") == "ROBERTO AGUAYO")
+            #.then(pl.lit("blue"))
             .otherwise(pl.lit("grey"))
         )
         .sort("fgoe", descending=True)
     )
 
     return data
-
-
-
 
 
 ```
@@ -193,13 +214,20 @@ df_model_pd = df.to_pandas()
 There is clear evidence of a non-linear relationship between kick distance and success rate, as shown in the plot below. Using splines in the model will allow us to estimate this relationship much more realistically than a simple polynomial model.
 
 ```{python}
-#| code-fold: true
+# | code-fold: true
 df_plot = df.group_by("distance").agg(pl.col("success").sum() / pl.count("success"))
-sns.regplot(x="distance", y="success", data=df_plot, lowess=True)
-plt.title("Success Rate by Distance - Observed Data")
-plt.xlabel("Attempt Distance (yards)", fontsize=14)
-plt.ylabel("Success Rate", fontsize=14)
-plt.show()
+(
+    ggplot(df_plot, aes("distance", "success"))
+    + geom_smooth()
+    + geom_point(alpha = 0.2)
+    + labs(
+        title="Success Rate by Distance - Observed Data",
+        x="Attempt Distance (yards)",
+        y="Success Rate",
+    )
+    + theme_bw()
+)
+
 ```
 
 Additionally, players have varying skill levels that traditional analytics cannot fully capture. The sparse data and hierarchical structure of the underlying process make this well-suited for hierarchical modeling approaches.
@@ -225,6 +253,8 @@ $$
 - Partially pooled intercepts by player
 - The distribution of player effects share the same sigma parameter
 - Spline with basis functions applied to distance
+
+This model generates player-specific intercepts that adapt based on individual performance and data availability. Players with more observations will have their estimates pulled toward their own performance, while those with limited data will remain closer to the population prior. The shared variance across all players creates partial pooling, where information is borrowed between players to improve estimates for those with limited data.
 
 ### Priors
 
@@ -275,13 +305,41 @@ model.plot_priors();
 
 ```{python}
 #| code-fold: true
-# | fig-align: center
-ax = az.plot_ppc(model.prior_predictive(), group="prior");
-ax.set_xticks([0, 1])
-plt.show()
+df_prior = pl.from_pandas(
+    model.prior_predictive().prior_predictive["success"].to_dataframe().reset_index()
+)
+
+(
+    ggplot(aes("success", "len"))
+    + geom_col(
+        aes(group="draw"),
+        position="identity",
+        fill=None,
+        color="#00000013",
+        alpha=0.01,
+        data=df_prior.group_by(["draw", "success"]).len(),
+    )
+    + geom_col(
+        fill=None,
+        color="firebrick",
+        size = 1.5,
+        data=df.group_by(["success"]).len(),
+    )
+    + theme_bw()
+    + labs(
+        title ='Prior Predictive Checks',
+        x = 'Success',
+        y = 'Count'
+    )
+    + scale_x_continuous(breaks=[0, 1])
+    + theme(
+        panel_grid_minor=element_blank(),
+        panel_grid_major_x=element_blank()
+    )
+)
 ```
 
-This model generates player-specific intercepts that adapt based on individual performance and data availability. Players with more observations will have their estimates pulled toward their own performance, while those with limited data will remain closer to the population prior. The shared variance across all players creates partial pooling, where information is borrowed between players to improve estimates for those with limited data.
+
 
 #### Fitting the model
 
@@ -302,14 +360,10 @@ az.summary(idata, var_names=["Intercept", s])
 
 Unlike player effect coefficients, they are not as easily interpretable in a table. The plots below are to help understand how they come together. First, plotting each basis function and it's new shape after learning parameter weights.
 
-On the left, each basis function with the model estimates. The plot on the right shows them summed together to produce the estimated effect of distance on FG success.
+Each basis function with the model parameters applied to it.
 
 ```{python}
 # | code-fold: true
-# | fig-subcap:
-# |   - "Individual Basis Functions"
-# |   - "Aggregated Spline"
-# | layout-ncol: 2
 idata.posterior[s].to_dataframe()
 
 w = idata.posterior[s].mean(("chain", "draw")).values
@@ -323,13 +377,25 @@ df_spline = (
     .assign(basis_idx=lambda x: x["basis_idx"].astype(str))
 )  # .query('distance > 20')
 
-sns.lineplot(df_spline, x="distance", y="value", hue="basis_idx")
-plt.title("Basis function's shape")
-plt.show()
+(
+    ggplot(df_spline, aes("distance", "value", color="factor(basis_idx)"))
+    + geom_line(size = 1.2)
+    + labs(title="Basis Function Shape", color="bf")
+    + theme_bw()
+    + theme(legend_position="top")
+)
+```
 
-sns.lineplot(df_spline.groupby("distance")["value"].mean())
-plt.title("General spline shape")
-plt.show()
+The plot below shows them aggregated together to produce the estimated effect of distance on FG success.
+
+```{python}
+# | code-fold: true
+(
+    ggplot(df_spline.groupby("distance", as_index=False)["value"].mean())
+    + geom_line(aes("distance", "value"), size = 1.2)
+    + labs(title="General Spline Shape")
+    + theme_bw()
+)
 ```
 
 ### Player Effects
@@ -370,23 +436,43 @@ df_goe = model.predict(idata, data=df_2018, inplace=False)
 
 # takes the posterior predictive distribution and subtracts the
 # predicted probability from the observed kicks
-idata_fgoe = (
+df_fgoe = (
     df_goe["posterior"]["p"]
     .to_dataframe()
     .reset_index()
     .merge(df_2018.assign(__obs__=lambda x: np.arange(x.shape[0])), on="__obs__")
     .assign(fgoe=lambda x: x["success"] - x["p"])[
-        ["chain", "draw", "fgoe", "player_name", "__obs__"]
+        ["chain", "draw", "fgoe", "player_name", "__obs__", "player_id"]
     ]
-    .groupby(["chain", "draw", "player_name"], observed=True)
+    .groupby(["chain", "draw", "player_name", "player_id"], observed=True)
     .agg({"fgoe": "sum"})
-    .to_xarray()
+    .reset_index()
 )
+```
 
-ax = plot_fgoe(
-    idata_fgoe,
-    "Field Goal Over Expected (FGOE) by Player - Blocks Removed",
-    "JUSTIN TUCKER",
+```{python}
+#| code-fold: true
+(
+    ggplot(
+        pointrange_data(df_fgoe),
+        aes("reorder(player_name, fgoe)", "fgoe", color="highlight"),
+    )
+    + geom_linerange(
+        aes(ymin="hdi_lower", ymax="hdi_upper"),
+        size=1.2,
+    )
+    + geom_pointrange(aes(ymin="ymin", ymax="ymax"), shape="o", fill="white")
+    + coord_flip()
+    + scale_color_identity()
+    + labs(
+        title="Field Goal Over Expected (FGOE)",
+        subtitle="2018",
+        y="Simulated FGOE",
+    )
+    + theme_bw()
+    + theme(legend_position="none", axis_title_y=element_blank(), figure_size=(6, 6), dpi=100, panel_grid_minor=element_blank(), panel_grid_major_y=element_blank(), axis_text_y=element_text(size=6, weight='bold'))
+    + geom_hline(yintercept=0, linetype="dashed")
+
 )
 ```
 
@@ -400,22 +486,50 @@ If we look at the previous 2 seasons, Tucker was one of the better kickers in th
 # | code-fold: true
 df_before = df_model_pd[df_model_pd["season"].isin([2016, 2017])]
 
-plot_fgoe(
+df_before = pointrange_data(
     (
-    model.predict(idata, data=df_before, inplace=False)["posterior"]["p"]
-    .to_dataframe()
-    .reset_index()
-    .merge(df_before.assign(__obs__=lambda x: np.arange(x.shape[0])), on="__obs__")
-    .assign(fgoe=lambda x: x["success"] - x["p"])[
-        ["chain", "draw", "fgoe", "player_name", "__obs__"]
-    ]
-    .groupby(["chain", "draw", "player_name"], observed=True)
-    .agg({"fgoe": "sum"})
-    .to_xarray()
-    ),
-    "Field Goal Over Expected (FGOE) by Player (2016-2017)",
-    "JUSTIN TUCKER",
-);
+        model.predict(idata, data=df_before, inplace=False)["posterior"]["p"]
+        .to_dataframe()
+        .reset_index()
+        .merge(df_before.assign(__obs__=lambda x: np.arange(x.shape[0])), on="__obs__")
+        .assign(fgoe=lambda x: x["success"] - x["p"])[
+            ["chain", "draw", "fgoe", "player_name", "player_id", "__obs__"]
+        ]
+        .groupby(["chain", "draw", "player_name", "player_id"], observed=True)
+        .agg({"fgoe": "sum"})
+        .reset_index()
+    )
+)
+
+(
+    ggplot(
+        df_before,
+        aes("reorder(player_name, fgoe)", "fgoe", color="highlight"),
+    )
+    + geom_linerange(
+        aes(ymin="hdi_lower", ymax="hdi_upper"),
+        size=1.2,
+    )
+    + geom_pointrange(aes(ymin="ymin", ymax="ymax"), shape="o", fill="white")
+    + coord_flip()
+    + scale_color_identity()
+    + labs(
+        title="Field Goal Over Expected (FGOE)",
+        subtitle="2016 - 2017 | Justin Tucker has typically been one of the better kickers",
+        y="Simulated FGOE",
+    )
+    + theme_bw()
+    + theme(
+        legend_position="none",
+        axis_title_y=element_blank(),
+        figure_size=(6, 6),
+        dpi=100,
+        panel_grid_minor=element_blank(),
+        panel_grid_major_y=element_blank(),
+        axis_text_y=element_text(size=6, weight="bold"),
+    )
+    + geom_hline(yintercept=0, linetype="dashed")
+)
 ```
 
 
@@ -427,7 +541,7 @@ When blocked kicks are removed, the model results align a _little_ better with e
 
 ```{python}
 # | code-fold: true
-idata_fgoe_no_block = (
+df_fgoe_no_block = (
     df_goe["posterior"]["p"]
     .to_dataframe()
     .reset_index()
@@ -438,16 +552,42 @@ idata_fgoe_no_block = (
         on="__obs__",
     )
     .assign(fgoe=lambda x: x["success"] - x["p"])[
-        ["chain", "draw", "fgoe", "player_name", "__obs__"]
+        ["chain", "draw", "fgoe", "player_name", "player_id", "__obs__"]
     ]
-    .groupby(["chain", "draw", "player_name"], observed=True)
+    .groupby(["chain", "draw", "player_name", "player_id"], observed=True)
     .agg({"fgoe": "sum"})
-    .to_xarray()
+    .reset_index()
 )
 
-plot_fgoe(
-    idata_fgoe_no_block, "Field Goal Over Expected (FGOE) by Player - Blocks Removed", "JUSTIN TUCKER"
-);
+(
+    ggplot(
+        pointrange_data(df_fgoe_no_block),
+        aes("reorder(player_name, fgoe)", "fgoe", color="highlight"),
+    )
+    + geom_linerange(
+        aes(ymin="hdi_lower", ymax="hdi_upper"),
+        size=1.2,
+    )
+    + geom_pointrange(aes(ymin="ymin", ymax="ymax"), shape="o", fill="white")
+    + coord_flip()
+    + scale_color_identity()
+    + labs(
+        title="Field Goal Over Expected (FGOE)",
+        subtitle="2018 | Removing blocked kicks",
+        y="Simulated FGOE",
+    )
+    + theme_bw()
+    + theme(
+        legend_position="none",
+        axis_title_y=element_blank(),
+        figure_size=(6, 6),
+        dpi=100,
+        panel_grid_minor=element_blank(),
+        panel_grid_major_y=element_blank(),
+        axis_text_y=element_text(size=6, weight="bold"),
+    )
+    + geom_hline(yintercept=0, linetype="dashed")
+)
 
 ```
 
@@ -479,7 +619,7 @@ df_pred = preds.posterior["p"].to_dataframe().reset_index()
 df_avg_pred = avg_preds["posterior"]["p"].to_dataframe().reset_index()
 
 # take the predictions form the players and subtract the posterior predictions without group effects. This provides the main source of the metric for simulated FGOE
-df_fgoe = (
+df_sfgoe = (
     df_pred.merge(df_avg_pred, on=["chain", "draw", "__obs__"], how="inner")
     .merge(
         df_grid_18[["player_id", "player_name", "distance", "__obs__"]],
@@ -491,7 +631,7 @@ df_fgoe = (
 
 # polars for efficient aggregation
 df_output = (
-    pl.from_pandas(df_fgoe)
+    pl.from_pandas(df_sfgoe)
     .group_by(["player_id", "player_name", "draw", "chain"])
     .agg(pl.col("fgoe").sum())
 )
@@ -508,11 +648,33 @@ The plot below shows the posterior distributions of simulated FGOE. Compared to 
 For example, saying that Justin Tucker’s FGOE is between 1 and 4 field goals over expected is far more interpretable than stating that _the log-odds of the player’s intercept increases by 0.2 and 0.8_.
 
 ```{python}
-#| code-fold: true
-idata_post = df_output.to_pandas().set_index(['chain', 'draw', 'player_name']).to_xarray()
-
-
-plot_fgoe(idata_post, "Simulated FGOE", 'JUSTIN TUCKER');
+# | code-fold: true
+(
+    ggplot(
+        pointrange_data(df_output),
+        aes("reorder(player_name, fgoe)", "fgoe", color="highlight"),
+    )
+    + geom_pointrange(aes(ymin="ymin", ymax="ymax"))
+    + geom_linerange(aes(ymin="hdi_lower", ymax="hdi_upper"), size=1.5)
+    + coord_flip()
+    + scale_color_identity()
+    + labs(
+        title="Simulated Field Goal Over Expected (FGOE)",
+        subtitle="2018",
+        y="Simulated FGOE",
+    )
+    + theme_bw()
+    + theme(
+        legend_position="none",
+        axis_title_y=element_blank(),
+        figure_size=(6, 6),
+        dpi=100,
+        panel_grid_minor=element_blank(),
+        panel_grid_major_y=element_blank(),
+        axis_text_y=element_text(size=6, weight="bold"),
+    )
+    + geom_hline(yintercept=0, linetype="dashed")
+)
 ```
 
 #### Comparing output
@@ -524,39 +686,114 @@ The models aren't necesarily 1:1 comparisons of the same distribution of kicks, 
 :::
 
 
-```{python}
-#| code-fold: true
-fgoe_mean = idata_post["fgoe"].mean(("chain", "draw")) * -1
 
-axs = az.plot_forest(
-    [idata_post.sortby(fgoe_mean), idata_fgoe.sortby(fgoe_mean)],
-    var_names=["fgoe"],
-    model_names=["Simulated", "Traditional"],
-    combined=True,
+```{python}
+# | code-fold: true
+
+df_comparison = pl.concat(
+    [
+        df_output.with_columns(model=pl.lit("Simulated")),
+        pl.from_pandas(df_fgoe)
+        .with_columns(model=pl.lit("Traditional"))
+        .select(["player_id", "player_name", "draw", "chain", "fgoe", "model"]),
+    ]
 )
-ax = axs[0]
-ax.axvline(x=0, color="black", linestyle="--", linewidth=1)
-ax.set_title("Comparison")
-ax.set_xlabel("FGOE")
-ax.tick_params(axis="y", labelsize=8)
-plt.show()
+
+df_comparison_r = pointrange_data(
+    df_comparison, group=["player_id", "player_name", "model"]
+).join(
+    df_output.group_by(["player_name", "player_id"]).agg(
+        plot_sort=pl.col("fgoe").mean(), simulations=pl.len()
+    ),
+    on=["player_id", "player_name"],
+)
+
+(
+    ggplot(
+        df_comparison_r, aes("reorder(player_name, plot_sort)", "fgoe", color="model")
+    )
+    + geom_linerange(
+        aes(ymin="hdi_lower", ymax="hdi_upper"), size=1.2, position=position_dodge(0.5)
+    )
+    + geom_pointrange(
+        aes(ymin="ymin", ymax="ymax"),
+        shape="o",
+        fill="white",
+        position=position_dodge(0.5),
+    )
+    + coord_flip()
+    + scale_color_manual(values=["grey","black"])
+    + labs(
+        y="Simulated FGOE",
+    )
+    + theme_bw()
+    + theme(
+        legend_position="top",
+        axis_title_y=element_blank(),
+        figure_size=(7, 7),
+        dpi=100,
+        panel_grid_minor=element_blank(),
+        panel_grid_major_y=element_blank(),
+        axis_text_y=element_text(size=6, weight="bold"),
+    )
+    + geom_hline(yintercept=0, linetype="dashed")
+    + labs(
+        title="Simulated Field Goal Over Expected (FGOE)",
+        y="Simulated FGOE",
+        color="Model:",
+    )
+)
 ```
+
 
 #### Which player would we prefer?
 
 Now, even if a kicker hasn't attempted a 60 yard kick, we can provide an estimate for what that might look like.
 
 ```{python}
-#| code-fold: true
-plot_df = df_fgoe[
-    df_fgoe["player_name"].isin(["JUSTIN TUCKER", "ZANE GONZALEZ"])
-].assign(player_name=lambda x: x["player_name"].astype(str))
+# | code-fold: true
+plot_df = pl.from_pandas(
+    df_sfgoe[df_sfgoe["player_name"].isin(["JUSTIN TUCKER", "ZANE GONZALEZ"])].assign(
+        player_name=lambda x: x["player_name"].astype(str)
+    )
+)
 
-sns.lineplot(plot_df, x="distance", y="p_x", hue="player_name", errorbar=("pi", 90))
-plt.title("Comparison of kicker by distance")
-plt.xlabel("Attempt Distance (yards)", fontsize=14)
-plt.ylabel("P(Make)", fontsize=14)
-plt.show()
+pointrange_data(plot_df, field="p_x", group=["player_name", "distance"])
+
+(
+    ggplot(aes("distance", "p_x", color="player_name"))
+    + geom_ribbon(
+        aes(y="fgoe", ymin="ymin", ymax="ymax", fill="player_name"),
+        # fill="#00000033",
+        data=pointrange_data(plot_df, field="p_x", group=["player_name", "distance"]),
+        alpha=0.2,
+        outline_type=element_blank(),
+        show_legend={"fill": False},
+    )
+    + geom_ribbon(
+        aes(y="fgoe", ymin="hdi_lower", ymax="hdi_upper", fill="player_name"),
+        # fill="#00000053",
+        data=pointrange_data(plot_df, field="p_x", group=["player_name", "distance"]),
+        alpha=0.4,
+        outline_type=element_blank(),
+        show_legend={"fill": False},
+    )
+    + geom_line(
+        data=plot_df.group_by(["player_name", "distance"]).agg(pl.col("p_x").mean()),
+        size=1.5,
+    )
+    + theme_bw()
+    + theme(legend_position="top", panel_grid_minor=element_blank())
+    + labs(
+        title="Modeled Probability by Distance",
+        y="P(Make)",
+        x="Distance",
+        color="Player:",
+    )
+    + scale_x_continuous(limits=(25, 60))
+    + scale_color_manual(values=("midnightblue", "firebrick"))
+    + scale_fill_manual(values=("midnightblue", "firebrick"))
+)
 ```
 
 ## Leaderboard
@@ -567,18 +804,18 @@ The table below presents the generated leaderboard, showcasing the player_id, pl
 # | code-fold: true
 
 
-def create_leaderboard(df: pl.DataFrame, idata: az.InferenceData) -> pl.DataFrame:
+def create_leaderboard(df: pl.DataFrame) -> pl.DataFrame:
     """
     Create the leaderboard of FGOE values
 
     Args:
         df: (pl.DataFrame) dataframe from `create_fgoe_draws()`
-        idata: (az.InferenceData) from model
 
     Returns:
         pl.DataFrame: Polars dataframe of leaderboard
 
     """
+    idata_post = df.to_pandas().set_index(["chain", "draw", "player_name"]).to_xarray()
 
     # perc player was in top 5 of a draw
     df_top_5 = (
@@ -595,7 +832,7 @@ def create_leaderboard(df: pl.DataFrame, idata: az.InferenceData) -> pl.DataFram
     leaderboard = (
         (
             pl.from_pandas(
-                az.summary(idata, var_names=["fgoe"], hdi_prob=0.9)
+                az.summary(idata_post, var_names=["fgoe"], hdi_prob=0.9)
                 .reset_index()
                 .assign(player_name=lambda x: x["index"].str.extract(r"fgoe\[(.+)\]"))
             )
@@ -628,7 +865,7 @@ def create_leaderboard(df: pl.DataFrame, idata: az.InferenceData) -> pl.DataFram
     return leaderboard
 
 
-leaderboard = create_leaderboard(df_output, idata_post)
+leaderboard = create_leaderboard(df_output)
 leaderboard.write_csv("leaderboard.csv")
 
 (
