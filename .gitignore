@@ -13,3 +13,4 @@ wheels/
 *.rds
 sumary_files/
 summary.Md
+.env
