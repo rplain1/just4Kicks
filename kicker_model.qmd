@@ -272,7 +272,7 @@ model.plot_priors();
 #### Prior predictive checks
 
 ```{python}
-#| code-fold: true
+# | code-fold: true
 df_prior = pl.from_pandas(
     model.prior_predictive().prior_predictive["success"].to_dataframe().reset_index()
 )
@@ -280,30 +280,28 @@ df_prior = pl.from_pandas(
 (
     ggplot(aes("success", "len"))
     + geom_col(
-        aes(group="draw"),
+        aes(group="draw", color="t"),
         position="identity",
         fill=None,
-        color="#00000013",
+        # color="#00000013",
         alpha=0.01,
-        data=df_prior.group_by(["draw", "success"]).len(),
+        data=df_prior.group_by(["draw", "success"])
+        .len()
+        .with_columns(t=pl.lit("prior")),
     )
     + geom_col(
+        aes(color="t"),
         fill=None,
-        color="firebrick",
-        size = 1.5,
-        data=df.group_by(["success"]).len(),
+        #width = 0.5,
+        #alpha = 0.1,
+        size=1.5,
+        data=df.group_by(["success"]).len().with_columns(t=pl.lit("observed")),
     )
     + theme_bw()
-    + labs(
-        title ='Prior Predictive Checks',
-        x = 'Success',
-        y = 'Count'
-    )
+    + labs(title="Prior Predictive Checks", x="Success", y="Count", color='')
     + scale_x_continuous(breaks=[0, 1])
-    + theme(
-        panel_grid_minor=element_blank(),
-        panel_grid_major_x=element_blank()
-    )
+    + theme(panel_grid_minor=element_blank(), panel_grid_major_x=element_blank(), legend_position=(0.1,1), legend_background=element_blank())
+    + scale_color_manual(values=("#00000013", 'coral'))
 )
 ```
 
