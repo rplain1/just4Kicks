@@ -38,8 +38,6 @@ import arviz as az
 import polars as pl
 import bambi as bmb
 import pandas as pd
-import seaborn as sns
-import matplotlib.pyplot as plt
 
 from arviz.labels import BaseLabeller
 
@@ -757,8 +755,6 @@ plot_df = pl.from_pandas(
         player_name=lambda x: x["player_name"].astype(str)
     )
 )
-
-pointrange_data(plot_df, field="p_x", group=["player_name", "distance"])
 
 (
     ggplot(aes("distance", "p_x", color="player_name"))
