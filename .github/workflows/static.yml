@@ -42,7 +42,7 @@ jobs:
         with:
           path: |
             ./index.html
-            ./kicker_model_files
+            ./kicker_model_files/
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4
