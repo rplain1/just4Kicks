@@ -14,3 +14,4 @@ wheels/
 sumary_files/
 summary.Md
 .env
+.DS_Store
