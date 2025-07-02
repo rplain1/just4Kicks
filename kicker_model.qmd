@@ -151,12 +151,9 @@ def pointrange_data(
         )
         .drop(["hdi_90", "hdi_50"])
         .with_columns(
-            highlight=pl.when(pl.col("player_name") == "JUSTIN TUCKER").then(
-                pl.lit(palette[-1])
-            )
-            # .when(pl.col("player_name") == "ROBERTO AGUAYO")
-            # .then(pl.lit("blue"))
-            .otherwise(pl.lit("grey"))
+            highlight=pl.when(pl.col("player_name") == "JUSTIN TUCKER")
+            .then(pl.lit(palette[-1]))
+            .otherwise(pl.lit(palette[1]))
         )
         .sort("fgoe", descending=True)
     )
@@ -178,9 +175,42 @@ def title_name(df: pl.DataFrame | pd.DataFrame):
 
 def get_jt(df):
     shape = df.shape[0]
-    var = df.with_row_index().filter(pl.col("player_name") == "Justin Tucker")['index'][0]
+    var = df.with_row_index().filter(pl.col("player_name") == "Justin Tucker")["index"][0]
 
     return shape - var
+
+
+def ggpointinterval(
+    df: pl.DataFrame, title: str, axis_label: str, figure_size=(6, 8), axis_text_size=10
+):
+    df_plot = pointrange_data(df)
+    df_plot = title_name(df_plot)
+    return (
+        ggplot(
+            df_plot,
+            aes("reorder(player_name, fgoe)", "fgoe", color="highlight"),
+        )
+        + geom_pointrange(aes(ymin="ymin", ymax="ymax"))
+        + geom_linerange(aes(ymin="hdi_lower", ymax="hdi_upper"), size=1.5)
+        + coord_flip()
+        + scale_color_identity()
+        + labs(
+            title=title,
+            y=axis_label,
+        )
+        + theme_minimal()
+        + theme(
+            legend_position="none",
+            axis_title_y=element_blank(),
+            figure_size=figure_size,
+            dpi=100,
+            panel_grid_minor=element_blank(),
+            panel_grid_major_y=element_blank(),
+            axis_text_y=element_text(size=axis_text_size),
+        )
+        + geom_hline(yintercept=0, linetype="solid")
+        + geom_vline(xintercept=get_jt(df_plot), linetype="dotted", color=palette[-2])
+    )
 ```
 
 ### Data
@@ -433,7 +463,7 @@ What I outlined in my application was establishing at minimum a Field Goal Over 
 
 #### 2018 results
 
-To calculate a traditional FGOE, the average expected probabilities accounting for distance and removing the player grouping effects can be used. FGOE is simply the observed event minus those expected probabilites. This provides a distribution of what each players traditional FGOE metric looks like.
+To calculate a traditional FGOE, the average expected probabilities accounting for distance and removing the player grouping effects can be used. FGOE is simply the observed event minus those expected probabilites. This can be done with any point estimate technique, and with a Bayesian model we have a distribution of estimates to use.
 
 ```{python}
 df_2018 = df_model_pd[df_model_pd["season"] == 2018]
@@ -460,106 +490,44 @@ df_fgoe = (
     .agg({"fgoe": "sum"})
     .reset_index()
 )
+
+ggpointinterval(df_fgoe, title='Traditional FGOE - 2018', axis_label='Traditional FGOE')
 ```
 
-```{python}
-# | code-fold: true
-p1 = title_name(pointrange_data(df_fgoe))
-(
-    ggplot(
-        title_name(pointrange_data(df_fgoe)),
-        aes("reorder(player_name, fgoe)", "fgoe", color="highlight"),
-    )
-    + geom_hline(yintercept=0, linetype="solid")
-    #+ geom_vline(xintercept=36, linetype="dotted", color="#ff895a")
-    + geom_linerange(
-        aes(ymin="hdi_lower", ymax="hdi_upper"),
-        size=1.2,
-    )
-    + geom_pointrange(aes(ymin="ymin", ymax="ymax"), shape="o", fill="white")
-    + coord_flip()
-    + scale_color_identity()
-    # scale_color_manual(values=("#9fa3b3", "#ff4b00"))
-    + labs(
-        title="Field Goal Over Expected (FGOE)",
-        subtitle="2018",
-        y="Traditional FGOE",
-    )
-    + theme_minimal()
-    + theme(
-        legend_position="none",
-        axis_title_y=element_blank(),
-        figure_size=(6, 8),
-        dpi=100,
-        panel_grid_minor=element_blank(),
-        panel_grid_major_y=element_blank(),
-        axis_text_y=element_text(size=8),
-    )
-     + geom_vline(xintercept=get_jt(p1), linetype="dotted", color="#ff895a")
-)
-```
-
-One problem... Justin Tucker is replacement-level kicker? Objectively, Tucker was one of the best kickers in the league at the time of the data. It wouldn't be unlike presenting a QB model with Patrick Mahomes or Tom Brady at the bottom. Pitching this metric and leaderboard in 2018 would have been difficult, and rightfully so.
+The problem with this metric? Justin Tucker is represented as a replacement-level kicker or worse in 2018? Historically, Tucker has been one of the best kickers in the league going into the 2018 season. Pitching this metric and leaderboard in 2018 would have been difficult, and rightfully so.
 
 #### 2016-2017 results
 
-Looking at the previous 2 seasons, Tucker was one of the best kickers in the league by traditional FGOE.
+Looking at the previous 2 seasons, Tucker's Traditional FGOE metric stood out amoung the rest.
 
 ```{python}
 # | code-fold: true
 df_before = df_model_pd[df_model_pd["season"].isin([2016, 2017])]
 
-df_before = pointrange_data(
-    (
-        model.predict(
-            idata, data=df_before, inplace=False, include_group_specific=False
-        )["posterior"]["p"]
-        .to_dataframe()
-        .reset_index()
-        .merge(df_before.assign(__obs__=lambda x: np.arange(x.shape[0])), on="__obs__")
-        .assign(fgoe=lambda x: x["success"] - x["p"])[
-            ["chain", "draw", "fgoe", "player_name", "player_id", "__obs__"]
-        ]
-        .groupby(["chain", "draw", "player_name", "player_id"], observed=True)
-        .agg({"fgoe": "sum"})
-        .reset_index()
-    )
+df_before = (
+    model.predict(idata, data=df_before, inplace=False, include_group_specific=False)[
+        "posterior"
+    ]["p"]
+    .to_dataframe()
+    .reset_index()
+    .merge(df_before.assign(__obs__=lambda x: np.arange(x.shape[0])), on="__obs__")
+    .assign(fgoe=lambda x: x["success"] - x["p"])[
+        ["chain", "draw", "fgoe", "player_name", "player_id", "__obs__"]
+    ]
+    .groupby(["chain", "draw", "player_name", "player_id"], observed=True)
+    .agg({"fgoe": "sum"})
+    .reset_index()
 )
 
-df_before = title_name(df_before)
-(
-    ggplot(
-        df_before,
-        aes("reorder(player_name, fgoe)", "fgoe", color="highlight"),
-    )
-    + geom_hline(yintercept=0, linetype="dashed")
-    + geom_linerange(
-        aes(ymin="hdi_lower", ymax="hdi_upper"),
-        size=1.2,
-    )
-    + geom_pointrange(aes(ymin="ymin", ymax="ymax"), shape="o", fill="white")
-    + coord_flip()
-    + scale_color_identity()
-    + labs(
-        title="Field Goal Over Expected (FGOE)",
-        subtitle="2016 - 2017 | Justin Tucker has been one of the best",
-        y="Traditional FGOE",
-    )
-    + theme_minimal()
-    + theme(
-        legend_position="none",
-        axis_title_y=element_blank(),
-        figure_size=(6, 8),
-        dpi=100,
-        panel_grid_minor=element_blank(),
-        panel_grid_major_y=element_blank(),
-        axis_text_y=element_text(size=8),
-    )
-    + geom_vline(xintercept=get_jt(df_before), linetype="dotted", color="#ff895a")
+ggpointinterval(
+    df_before,
+    title="Traditional FGOE by Player - 2016-2017",
+    axis_label="Traditional FGOE",
+    axis_text_size=8
 )
 ```
 
-It isn't impossible, but it should be unlikely that he dropped from one of the best to one of the worst in 6 weeks.
+It isn't impossible, but it should be unlikely that he dropped from an outlier lead, to one of the worst in 6 weeks.
 
 The problem with using this metric alone is that limited sample sizes can introduce a significant amount noise. Upon examining the dataset, there were multiple blocked field goals against Tucker. While outside the scope of this analysis, it's uncertain how much credit should be assigned to the kicker versus the blocking on the play for blocked kicks.
 
@@ -587,50 +555,19 @@ df_fgoe_no_block = (
     .reset_index()
 )
 
-p2 = title_name(pointrange_data(df_fgoe_no_block))
-(
-    ggplot(
-        p2,
-        aes("reorder(player_name, fgoe)", "fgoe", color="highlight"),
-    )
-    + geom_hline(yintercept=0, linetype="dashed")
-    + geom_linerange(
-        aes(ymin="hdi_lower", ymax="hdi_upper"),
-        size=1.2,
-    )
-    + geom_pointrange(aes(ymin="ymin", ymax="ymax"), shape="o", fill="white")
-    + coord_flip()
-    + scale_color_identity()
-    + labs(
-        title="Field Goal Over Expected (FGOE)",
-        subtitle="2018 | Removing blocked kicks",
-        y="Traditional FGOE",
-    )
-    + theme_minimal()
-    + theme(
-        legend_position="none",
-        axis_title_y=element_blank(),
-        figure_size=(6, 8),
-        dpi=100,
-        panel_grid_minor=element_blank(),
-        panel_grid_major_y=element_blank(),
-        axis_text_y=element_text(size=8),
-    )
-    + geom_vline(xintercept=get_jt(p2), linetype="dotted", color="#ff895a")
-)
-
+ggpointinterval(df_fgoe_no_block, title="Traditional FGOE - 2018 | Blocks Removed", axis_label='Traditional FGOE')
 ```
 
-However, this approach is arbitrary as it requires manual intervention and doesn't provide a way to account for such events within the model itself, highlighting the need for a better solution.
+However, this approach is arbitrary as it requires manual intervention that doesn't provide a way to account for such events within the model itself, highlighting the need for a better solution.
 ---
 
 ### Simulated FGOE
 
-The model allows us to extract each player's parameter distributions as well as distance effects, and apply it to simulated data. This enables what-if scenarios and projections beyond only observed data. By modeling all kickers on the same set of kicks, we can establish expectations for what each kicker could make in this hypothetical equal oppurtunity world.
-
-I chose linear intervals for kicks from 25-60 yards. This approach prioritizes simplicity, and it's easy to explain. This represents the first step toward gaining organizational buy-in for the leaderboard.
+The model allows us to extract each player's parameter distributions as well as distance effects, and apply it to simulated data. This enables what-if scenarios and projections beyond only observed data. We can establish expectations for what each kicker could make in this hypothetical world where they each attempt the same set of kicks.
 
 #### Standardized kick predictions
+
+I chose a linear interval of kicks from 25-60 yards. This decision is arbitrary, but prioritizes simplicity and represents the first step toward gaining organizational buy-in for the leaderboard.
 
 ```{python}
 
@@ -670,55 +607,26 @@ df_output.group_by(["player_name", "player_id"]).agg(
 )
 ```
 
-With the simulation of kicks, we can now look at a **Simulated FGOE**. This operates at the scale of posterior sample draws, with each player having 4,000 simulations across a distribution of kicks. This approach provides the ability to quantify uncertainty within the estimates and examine the range of potential outcomes, while addressing the sample size problem of a traditional FGOE.
+With the simulation of kicks, we can now look at a **Simulated FGOE**. This operates at the scale of posterior sample draws, with each player having 4,000 simulations across a distribution of kicks. This method provides the ability to quantify uncertainty within the estimates and examine the range of potential outcomes, while addressing the sample size problem of a traditional FGOE.
 
 #### Plotting Simulated FGOE
 
 The plot below shows the posterior distributions of simulated FGOE. Compared to the traditional version, this metric is more stable and less noisy, and it follows intuitive principles that make interpretation easier. Many players cluster around zero, roughly representing replacement level, while deviations in either direction are easy to interpret.
 
-For example, saying that Justin Tucker’s FGOE is between 1 and 4 field goals over expected is far more interpretable than stating that _the log-odds of the player’s intercept increases by a value between 0.2 and 0.8_.
+For example, Justin Tucker’s median rating falls between 1 and 4 field goals over expected, with a central estimate of approximately 2.5. That’s far more intuitive and communicable than saying _the player’s log-odds intercept increases by 0.2 to 0.8 after adjusting for distance_.
 
 ```{python}
 # | code-fold: true
-p3 = title_name(pointrange_data(df_output))
-(
-    ggplot(
-        p3,
-        aes("reorder(player_name, fgoe)", "fgoe", color="highlight"),
-    )
-    + geom_hline(yintercept=0, linetype="dashed")
-    + geom_pointrange(aes(ymin="ymin", ymax="ymax"))
-    + geom_linerange(aes(ymin="hdi_lower", ymax="hdi_upper"), size=1.5)
-    + coord_flip()
-    + scale_color_identity()
-    + labs(
-        title="Simulated Field Goal Over Expected (FGOE)",
-        subtitle="2018",
-        y="Simulated FGOE",
-    )
-    + theme_minimal()
-    + theme(
-        legend_position="none",
-        axis_title_y=element_blank(),
-        figure_size=(6, 8),
-        dpi=100,
-        panel_grid_minor=element_blank(),
-        panel_grid_major_y=element_blank(),
-        axis_text_y=element_text(size=8),
-    )
-    + geom_vline(xintercept=get_jt(p3), linetype="dotted", color="#ff895a")
-)
+ggpointinterval(df_output, title='Simulated FGOE Distributions - 2018', axis_label='Simulated FGOE')
 ```
 
 #### Comparing output
 
-To compare the traditional vs simulated FGOE, we can look at the posterior distributions between the two approaches.
+To compare traditional and simulated FGOE, we examine their posterior distributions. Simulated FGOE offers a more consistent and interpretable view of player performance. The distributions include credible intervals that reflect the uncertainty in player evaluation, ultimately making the metric more robust and reliable for assessing performance.
 
 ::: {.callout-note}
 The models aren't necesarily 1:1 comparisons of the same distribution of kicks, because with the traditional FGOE we are limited to the kicks that the kicker attempted. Simulated FGOE is applied to the same set of kicks for each kicker. It is more important to look directionally at each model. Easily shown is Justin Tucker is firmly at the top of the list, without having to adjust arbitrarily for blocked kicks.
 :::
-
-
 
 ```{python}
 # | code-fold: true
@@ -779,10 +687,9 @@ df_comparison_r = title_name(df_comparison_r)
 )
 ```
 
-
 #### Which player would we prefer?
 
-Now, even if a kicker hasn't attempted a 60 yard kick, we can provide an estimate for what that might look like.
+With the model parameters and simulation, even if a kicker hasn't attempted a 60 yard kick - we can provide an estimate for what that might look like. Probability curves by distance can help visualize comparisons between players.
 
 ```{python}
 # | code-fold: true
@@ -823,14 +730,14 @@ plot_df = pl.from_pandas(
         fill="Player:",
     )
     + scale_x_continuous(limits=(25, 60))
-    + scale_color_manual(values=("#ff4b00", "#001e42"))
-    + scale_fill_manual(values=("#ff4b00", "#001e42"))
+    + scale_color_manual(values=(palette[-1], palette[0]))
+    + scale_fill_manual(values=(palette[-1], palette[0]))
 )
 ```
 
 ## Leaderboard
 
-The table below presents the generated leaderboard, showcasing the player_id, player_name, rating (Simulated FGOE), and rank for the top 10 and bottom 10 kickers evaluated by the model. The *rank* column is in ascending order, where a lower rank indicates a better performance. The *Top 5* column indicates the percentage of simulations in which a player ranked among the top 5 kickers, offering a probabilistic measure of their elite performance.
+The table below presents the generated leaderboard, showcasing the Player Id, Player Name, Rating (Simulated FGOE), and Rank for the top 10 and bottom 10 kickers evaluated by the model. The *Rank* column is in ascending order, where a lower rank indicates a better performance. The *Top 5* column indicates the percentage of simulations in which a player ranked among the top 5 kickers, offering a probabilistic measure of their elite performance.
 
 ```{python}
 # | code-fold: true
