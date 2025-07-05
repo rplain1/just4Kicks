@@ -29,23 +29,36 @@ Any code not directly related to the model or derived metrics, such as plotting 
 
 All necessary library imports and custom utility functions for data preparation, modeling, and plotting are defined below:
 
+
+
 ```{python}
 # | code-fold: true
-import bambi as bmb
 import polars as pl
+from patsy import dmatrix
+import pymc as pm
 import numpy as np
 import arviz as az
-import polars as pl
-import bambi as bmb
 import pandas as pd
+from plotnine import *
+from pathlib import Path
+
+import polars.selectors as cs
 
 from great_tables import GT, md, html
 
-# ggplot and an ad-hoc report is the only time I would do this
-from plotnine import *
+
+palette = ["#001e42", "#535c78", "#9fa3b3", "#f1f1f1", "#ffbea4", "#ff895a", "#ff4b00"]
 
 
-def prep_data() -> pl.DataFrame:
+def player_index(df: pl.DataFrame) -> pl.DataFrame:
+    return (
+        df[["player_id", "player_name"]]
+        .unique()
+        .with_columns(player_idx=pl.col("player_id").to_physical().cast(pl.Int64))
+    )
+
+
+def prep_dataset() -> pl.DataFrame:
     """
     Create the base dataframe combining the two data sources
 
@@ -67,39 +80,38 @@ def prep_data() -> pl.DataFrame:
             player_name=pl.col("player_name").cast(pl.Categorical),
             season_type=pl.col("season_type").cast(pl.Categorical),
         )
+    ).with_columns(
+        distance_std=(pl.col("distance") - pl.col("distance").mean())
+        / pl.col("distance").std()
     )
 
     return df
 
 
-def create_grid(df: pd.DataFrame) -> pd.DataFrame:
-    """
-    Takes in a pandas dataframe and creates 1 row per kick attempt
-    for each kicker in 2018
-
-    Bambi relies on pandas...
-
-    Returns:
-        pd.DataFrame
-    """
-    df_2018 = df[df["season"] == 2018]
-
-    # grid for kicks between 25 and 60 yards
-    df_grid_18 = (
-        df_2018[["player_id", "player_name"]]
-        .drop_duplicates()
-        .assign(key=1)
-        .merge(
-            pd.DataFrame({"distance": [x for x in range(25, 61)]}).assign(key=1),
-            on="key",
-        )
-        .assign(__obs__=lambda x: np.arange(x.shape[0]))
+def make_pymc_data(df):
+    spline_basis = dmatrix(
+        "bs(distance_std, df=3, include_intercept = False) - 1",  # removed include_intercept=True) - 1",
+        data=df.to_pandas(),
+        return_type="dataframe",
     )
 
-    return df_grid_18
+    return {
+        "distance": df["distance_std"].to_numpy(),
+        "spline_array": np.asarray(spline_basis, order="F"),
+        "player": df["player_id"].to_physical().cast(pl.Int64).to_numpy(),
+        "player_cat": df["player_id"].cat.get_categories(),
+        "spline_shape": np.arange(spline_basis.shape[1]),
+        "spline_basis": spline_basis,
+    }
 
 
-palette = ["#001e42", "#535c78", "#9fa3b3", "#f1f1f1", "#ffbea4", "#ff895a", "#ff4b00"]
+def get_jt(df):
+    shape = df.shape[0]
+    var = df.with_row_index().filter(pl.col("player_name") == "Justin Tucker")["index"][
+        0
+    ]
+
+    return shape - var
 
 
 def pointrange_data(
@@ -173,13 +185,6 @@ def title_name(df: pl.DataFrame | pd.DataFrame):
         raise ValueError
 
 
-def get_jt(df):
-    shape = df.shape[0]
-    var = df.with_row_index().filter(pl.col("player_name") == "Justin Tucker")["index"][0]
-
-    return shape - var
-
-
 def ggpointinterval(
     df: pl.DataFrame, title: str, axis_label: str, figure_size=(6, 8), axis_text_size=10
 ):
@@ -215,18 +220,19 @@ def ggpointinterval(
 
 ### Data
 
-The data contains kicks for multiple seasons, where each kick event is a row.
 
 ```{python}
-
-df = prep_data()
-# Bambi currently expects Pandas DataFrames,
-# so the Polars DataFrame is converted for model fitting.
-df_model_pd = df.to_pandas()
-
+df = prep_dataset()
+df.head()
 ```
 
-There is clear evidence of a non-linear relationship between kick distance and success rate, as shown in the plot below. Using splines in the model will allow us to estimate this relationship much more realistically than a quadratic model.
+The data contains kicks for multiple seasons, where each kick event is a row. Each kick has a possible of 3 outcomes:
+
+- Made
+- Missed
+- Blocked
+
+
 
 ```{python}
 #| code-fold: true
@@ -246,15 +252,15 @@ df_plot = df.group_by("distance").agg(pl.col("success").sum() / pl.count("succes
 
 ```
 
-
+There is supporting evidence of a non-linear relationship between kick distance and success rate, as shown in the plot below. Using splines in the model will allow us to estimate this relationship much more realistically than a quadratic model.
 
 Additionally, players have varying skill levels that traditional analytics cannot fully capture. The sparse data and hierarchical structure of the underlying process makes this well-suited for hierarchical modeling methods.
 
 I will begin by building a simple model incorporating both kick distance (via splines) and individual player effects as primary features.
 
-### Model Setup, Priors, & Justification
+### Model Setup, Priors & Justification
 
-The following model was used:
+With the individual observed kicks, the scope of this analysis will be to estimate individual player's probability of success. The following model was used:
 
 $$
 \begin{aligned}
@@ -274,60 +280,73 @@ $$
 
 This model generates player-specific intercepts that adapt based on individual performance and data availability. Players with more observations will have their estimates pulled toward their own performance, while those with limited data will remain closer to the population prior. The shared variance across all players creates partial pooling, where information is borrowed between players to improve estimates for those with limited data.
 
+
 ### Priors
 
 Student-t priors were chosen for their heavier tails, providing more robust estimates to handle outliers or less certain prior knowledge. This is particularly useful for individual player effects.
 
 One of the strengths of Bayesian modeling is the ability to incorporate domain knowledge through prior distributions. For instance, we expect field goals from typical distances — such as 30 yards — to be successful more often than not. To reflect this, I placed a prior on the intercept of $Normal(1, 1)$, which corresponds to a probability greater than 50% (with the use of the logit link function).
 
+
 ```{python}
-# spline specification, miss you mgcv::s()
-s = "bs(distance, df=4, intercept=False)"
-priors = {
-    # global intercept, more likely for success
-    "Intercept": bmb.Prior('Normal', mu = 1, sigma = 1),
-    # priors on spline
-    s: bmb.Prior("StudentT", nu=3, mu=0, sigma=1),
-    # prior for player componenent, shared sigma parameter
-    # sigma is they hyperprior paramter shared
-    "1|player_id": bmb.Prior(
-        "StudentT", nu=3, mu=0, sigma=bmb.Prior("HalfNormal", sigma=0.5)
-    ),
+data = make_pymc_data(df)
+
+COORDS = {
+    "splines": data["spline_shape"],
+    "player_id": data["player_cat"],
 }
-
-# bambi definition
-model = bmb.Model(
-    f"success ~ (1|player_id) + {s}",
-    data=df_model_pd,
-    family="bernoulli",
-    priors=priors,
-    # default but critical
-    center_predictors=True, # better numerical stability
-    noncentered=True, # non-centered parameterization helps with hard to sample geometries
-)
-
-model
-
 ```
 
+
+```{python}
+with pm.Model(coords=COORDS) as model:
+    # -------------- DATA -------------------------------
+    spline_data = pm.Data("spline_data", data["spline_array"])
+    player_idx = pm.Data("player_idx", data["player"])
+
+    # ------------- PARAMETERS ---------------------------
+    # globa intercept
+    alpha = pm.Normal("alpha", mu=1, sigma=1)
+
+    # splines
+    w = pm.StudentT("w", nu=3, mu=0, sigma=1, dims="splines")
+    spline_contrib = pm.math.dot(spline_data, w.T)
+
+    # player effects
+    player_offset = pm.Normal("player_offset", mu=0, sigma=1, dims="player_id")
+    sigma = pm.HalfNormal("sigma", sigma=0.5)
+    player_effect = pm.Deterministic("1|player_id", player_offset * sigma)
+
+    # ------------- MODEL --------------------------------
+    mu = alpha + player_effect[player_idx] + spline_contrib
+    p = pm.Deterministic("p", pm.math.invlogit(mu))
+
+    # liklihood
+    pm.Bernoulli("y_rep", p=p, observed=df["success"].to_numpy())
+
+    # -------------- GENERATED QUANTITIES ----------------
+    mu_baseline = alpha + spline_contrib
+    p_baseline = pm.Deterministic("p_baseline", pm.math.invlogit(mu_baseline))
+
+    # -------------- PRIOR PREDICTIVE --------------------
+    idata = pm.sample_prior_predictive()
+
+pm.model_to_graphviz(model)
+```
+
+The plot shows how each component contributes to the model. The probability `p` is the parameter of interest. The spline data, spline weights, and global intercept contribute to a probability baseline that will later be used to compare player effects.
 
 After specifying the model structure and priors, a diagnostic tool in prior predictive checks help assess whether the model generates realistic values. In this case, since field goals are made more often than missed, the prior predictive distribution should reflect more success.
 
 #### Prior distributions
 
+
 ```{python}
 #| code-fold: true
-model.build();
-model.plot_priors(random_seed=527);
-```
 
-#### Prior predictive checks
-
-```{python}
-# | code-fold: true
 df_prior = pl.from_pandas(
-    model.prior_predictive().prior_predictive["success"].to_dataframe().reset_index()
-)
+    idata.prior_predictive["y_rep"].to_dataframe().reset_index()
+).rename({"y_rep": "success"})
 
 (
     ggplot(aes("success", "len"))
@@ -360,7 +379,7 @@ df_prior = pl.from_pandas(
     + theme(
         panel_grid_minor=element_blank(),
         panel_grid_major_x=element_blank(),
-        legend_position=(0.1, 1),
+        legend_position="top",
         legend_background=element_blank(),
     )
     + scale_color_manual(values=(palette[2], palette[-1]))
@@ -372,32 +391,58 @@ The results from the prior predictive check suggest that the priors lead to outc
 
 #### Fitting the model
 
-The model fits by sampling the posterior distribution of the paramters.
+The model fits by sampling the posterior distribution of the paramters. The following plot visualizes the posterior distributions of parameters, as well as rank bars for the chains. A uniform distribution indicates a good mixing of the chains.
 
 ```{python}
-idata = model.fit(draws=1000, chains=4, cores=1, random_seed=527)
-az.plot_trace(idata, kind='rank_bars');
+
+if Path('models/idata.nc').exists():
+    idata = az.from_netcdf('models/idata.nc')
+
+else:
+    with model:
+        idata.extend(pm.sample(cores=1, chains=4, random_seed=527))
+        az.to_netcdf(idata, 'models/idata.nc')
+
+params = ['alpha', 'w', '1|player_id', 'sigma']
+
+az.plot_trace(idata, var_names=params, kind="rank_bars");
 ```
 
-Another diagnostic tool in Bayesian models is to check the Markov Chain Monte Carlo (MCMC) algorithm. While these diagnostics don't account for causality or domain-specific modeling checks, it ensures the MCMC algorithm is working as expected. All chains converged without divergent transitions, and effective sample sizes are adequate.
+The Markov Chain Monte Carlo (MCMC) algorithm used to sample modern baye. While these diagnostics don't account for causality implications or domain-specific modeling checks, they help to ensure the MCMC algorithm is working as expected. All chains converged without divergent transitions, and effective sample sizes are adequate.
+
+
+```{python}
+az.summary(idata, var_names=params)
+```
+
+The following table summarizes these diagnostics across the model parameters. The distribution of bulk and tail ESS values, along with r_hat, to ensure all parameters were sampled adequately and that the posterior inferences are trustworthy.
+
+```{python}
+az.summary(idata, var_names=params)[["ess_bulk", "ess_tail", "r_hat"]].describe(
+    percentiles=[0.05, 0.5, 0.95]
+)
+```
 
 #### Assesing Fit
 
 The plot below shows that the model produces predictions consistent with the observed data, suggesting that the model's assumptions and structure are appropriate for summarizing performance.
 
-```{python}
 
-model.predict(idata, kind="response")
-df_ppd = pl.from_pandas(
-    az.extract(idata, group="posterior_predictive", num_samples=100)
-    .to_dataframe()["success"]
-    .reset_index()
-)
+```{python}
+with model:
+    df_ppd = pm.sample_posterior_predictive(idata, var_names=['y_rep'], random_seed=123)
 
 ```
 
 ```{python}
 # | code-fold: true
+df_ppd = pl.from_pandas(
+    df_ppd.posterior_predictive.sel(draw=slice(0, 10))
+    .stack(sample=["chain", "draw"])
+    .to_dataframe()["y_rep"]
+    .reset_index()
+).rename({"y_rep": "success"})
+
 (
     ggplot(aes("success", "len"))
     + geom_col(
@@ -411,19 +456,6 @@ df_ppd = pl.from_pandas(
             .with_columns(t=pl.lit("Posterior predictive"))
         ),
     )
-    # + geom_col(
-    #     aes(color="t"),
-    #     fill=None,
-    #     size=1.5,
-    #     data=(
-    #         df_ppd.group_by(["chain", "draw", "success"])
-    #         .len()
-    #         .group_by("success")
-    #         .agg(pl.col("len").mean())
-    #         .with_columns(t=pl.lit("Posterior predictive mean"))
-    #     ),
-    #     alpha=0.1,
-    # )
     + geom_col(
         aes(color="t"),
         fill=None,
@@ -437,14 +469,12 @@ df_ppd = pl.from_pandas(
     + theme(
         panel_grid_minor=element_blank(),
         panel_grid_major_x=element_blank(),
-        legend_position=(0.1, 1),
+        legend_position='top',
         legend_background=element_blank(),
     )
     + scale_color_manual(values=(palette[2], palette[-1]))
 )
-
 ```
-
 
 ### Parameters
 
@@ -453,20 +483,14 @@ df_ppd = pl.from_pandas(
 The table below summarizes the posterior distributions for each player's individual effect on the baseline probability of success, after controlling for kick distance.
 
 ```{python}
-#| code-fold: true
-az.summary(idata, var_names="1|player_id").reset_index().assign(
-    player_id=lambda x: x["index"].str.extract(r"player_id\[(\d+)\]")
-).merge(
-    df_model_pd[["player_id", "player_name"]]
-    .drop_duplicates()
-    .assign(player_id=lambda x: x.player_id.astype(str))
-).assign(
-    index=lambda x: x.player_name
-).drop(
-    ["player_id", "player_name"], axis=1
-).rename(
-    columns={"index": "player_name"}
-).sort_values('mean', ascending=False)
+# | code-fold: true
+
+player_index(df).join(
+    pl.from_pandas(az.summary(idata, var_names="1|player_id").reset_index()).with_columns(
+        player_idx=pl.col("index").str.extract(r"player_id\[(\d+)\]").cast(pl.Int64)
+    ),
+    on="player_idx",
+).select(pl.exclude(["player_idx", "index"])).with_columns(pl.col('player_name').cast(pl.Utf8).str.to_titlecase())
 ```
 
 While these individual player effects help understand the model's insights into each kicker's baseline skill, their direct interpretation as raw coefficients can be challenging to communicate to non-technical stakeholders as an intuitive standalone evaluation metric. This is why I will move towards the Simulated Field Goal Over Expected (FGOE), which translates these effects into a more relatable and actionable rating of expected performance on a standardized set of kicks.
@@ -476,39 +500,85 @@ While these individual player effects help understand the model's insights into 
 The table below shows the summary of spline coefficient distributions.
 
 ```{python}
-az.summary(idata, var_names=["Intercept", s])
+az.summary(idata, var_names=["alpha", 'w'])
 ```
 
 Unlike player effects, they are not as easily interpretable in a table. The plots below are to help build an understanding of how they come together.
 
 #### Basis functions
 
-There are 4 basis functions used in the model. Below is a plot of each basis function and it's new shape after learning parameter weights.
+There are 3 basis functions used in the model. Below is a plot of each basis function and it's new shape after learning parameter weights.
 
 ```{python}
 # | code-fold: true
-idata.posterior[s].to_dataframe()
 
-w = idata.posterior[s].mean(("chain", "draw")).values
+def create_spline_table() -> pl.DataFrame:
+    """
+    Takes the parameter means from the posterior and applies them to
+    the spline basis dataframe. This allows for plotting the estimated
+    spline functions.
 
-spline_basis = pd.DataFrame(model.components["p"].design.common[s])
+    Returns:
+        pl.DataFrame: long spline bf dataframe
+    """
+    w = idata.posterior["w"].mean(["chain", "draw"]).values
 
-df_spline = (
-    (spline_basis * w.T)
-    .assign(distance=df_model_pd["distance"])
-    .melt("distance", var_name="basis_idx", value_name="value")
-    .assign(basis_idx=lambda x: x["basis_idx"].astype(str))
-)  # .query('distance > 20')
+    return (
+        pl.DataFrame(data["spline_basis"].values * w.T)
+        .with_columns(distance=df["distance"].to_numpy())
+        .unpivot(cs.starts_with("col"), index="distance")
+        .with_columns(pl.col("variable").str.extract(r"(\d+)"))
+    )
 
+
+def create_spline_table_with_hdi(hdi_prob:float=0.95) -> pl.DataFrame:
+    """
+    Creates a dataframe with the high density intervals for the aggregated
+    spline function.
+
+    Returns:
+        pl.DataFrame
+    """
+
+    # Get HDI bounds
+    hdi_bounds = az.hdi(idata.posterior["w"], hdi_prob=hdi_prob)
+    w_lower = hdi_bounds["w"].sel(hdi="lower").values
+    w_upper = hdi_bounds["w"].sel(hdi="higher").values
+
+    # Create dataframes for lower and upper bounds
+    df_lower = (
+        pl.DataFrame(data["spline_basis"].values * w_lower.T)
+        .with_columns(distance=df["distance"].to_numpy())
+        .unpivot(cs.starts_with("col"), index="distance")
+        .with_columns(pl.col("variable").str.extract(r"(\d+)"))
+        .group_by("distance")
+        .agg(pl.col("value").mean().alias("lower"))
+    )
+
+    df_upper = (
+        pl.DataFrame(data["spline_basis"].values * w_upper.T)
+        .with_columns(distance=df["distance"].to_numpy())
+        .unpivot(cs.starts_with("col"), index="distance")
+        .with_columns(pl.col("variable").str.extract(r"(\d+)"))
+        .group_by("distance")
+        .agg(pl.col("value").mean().alias("upper"))
+    )
+
+    return df_lower.join(df_upper, on="distance")
+
+
+df_spline = create_spline_table()
 (
-    ggplot(df_spline, aes("distance", "value", color="factor(basis_idx)"))
-    + geom_line(size = 1.2)
+    ggplot(df_spline, aes("distance", "value", color="factor(variable)"))
+    + geom_line(size=1.2)
     + labs(title="Basis Function Shape", color="bf")
     + theme_minimal()
     + theme(legend_position="top")
-    + labs(x = 'Distance', y = 'Value')
+    + labs(x="Distance", y="Value")
+    # + scale_color_manual(values=[palette[0], palette[1], palette[-3], palette[-2]])
 )
 ```
+
 
 #### Aggregated spline
 
@@ -516,14 +586,26 @@ Finally, they can be aggregated together to produce the estimated effect of dist
 
 ```{python}
 # | code-fold: true
+
+df_spline_agg = (
+    df_spline.group_by("distance")
+    .agg(pl.col("value").mean())
+    .join(create_spline_table_with_hdi(), on="distance")
+)
+
 (
-    ggplot(df_spline.groupby("distance", as_index=False)["value"].mean())
+    ggplot(
+        df_spline_agg,
+        aes("distance", "value"),
+    )
     + geom_line(aes("distance", "value"), size=1.2, color=palette[0])
+    + geom_ribbon(aes(ymin="lower", ymax="upper"), alpha = 0.2)
     + labs(title="General Spline Shape")
     + theme_minimal()
     + labs(x="Distance", y="Value")
 )
 ```
+
 
 
 ## Field Goals Over Expected
@@ -534,35 +616,131 @@ What I outlined in my application was establishing at minimum a Field Goal Over 
 
 #### 2018 results
 
-To calculate a traditional FGOE, the average expected probabilities accounting for distance and removing the player grouping effects can be used. FGOE is simply the observed event minus those expected probabilites. This can be done with any point estimate technique, and with a Bayesian model we have a distribution of estimates to use.
+To calculate a traditional FGOE, the average expected probabilities accounting for distance and removing the player grouping effects can be used. FGOE is simply the observed event minus those expected probabilites. This can be done with any point estimate, but with a Bayesian methods we have a distribution of values to use.
+
+##### Utility Functions:
 
 ```{python}
-df_2018 = df_model_pd[df_model_pd["season"] == 2018]
+# | code-fold: true
+def add_avg_draws(
+    df: pl.DataFrame, data: dict = data, model: pm.Model = model
+) -> pl.DataFrame:
+    """
+    Get the predicted probabilities on distance without player effects. Similar to
+    `bambi.Model.predict(..., infer_group_specific=False)` or
+    `tidybayes::add_epred_draws(..., re_formula = NA`)`.
 
-df_tfgoe = model.predict(
-    idata, data=df_2018, inplace=False, include_group_specific=False
-)
+    These are used to calculate the FGOE metrics.
 
-df_preds_18 = model.predict(
-    idata, data=df_2018, inplace=False, include_group_specific=False
-)
+    """
+    design_info = data["spline_basis"].design_info
+    spline_array = data["spline_basis"].values
 
-# takes the posterior predictive distribution and subtracts the
-# predicted probability from the observed kicks
-df_fgoe = (
-    df_preds_18["posterior"]["p"]
-    .to_dataframe()
-    .reset_index()
-    .merge(df_2018.assign(__obs__=lambda x: np.arange(x.shape[0])), on="__obs__")
-    .assign(fgoe=lambda x: x["success"] - x["p"])[
-        ["chain", "draw", "fgoe", "player_name", "__obs__", "player_id"]
+    _spline_array = dmatrix(design_info, df.to_pandas(), return_type="dataframe").values
+
+    with model:
+        pm.set_data(
+            {
+                "player_idx": np.zeros_like(
+                    df["player_id"].to_numpy(), dtype=np.int64
+                ),  # or exclude entirely
+                "spline_data": _spline_array,
+            }
+        )
+        pred_baseline = pm.sample_posterior_predictive(idata, var_names=["p_baseline"])
+
+    df_pred_baseline = pl.from_pandas(
+        pred_baseline.posterior_predictive["p_baseline"].to_dataframe().reset_index()
+    ).rename({"p_baseline_dim_0": "__obs__"})
+
+    return df_pred_baseline
+
+
+def add_epred_draws(
+    df: pl.DataFrame, var_name: str, data: dict = data, model: pm.Model = model
+) -> pl.DataFrame:
+    """
+    Get the predicted probabilities on distance with player effects. Similar to
+    `bambi.Model.predict(..., infer_group_specific=True)` or
+    `tidybayes::add_epred_draws(..., re_formula = NA`)`.
+
+    These are used to calculate the FGOE metrics.
+
+    Returns:
+        pl.DataFrame
+    """
+    design_info = data["spline_basis"].design_info
+    spline_array = data["spline_basis"].values
+
+    _spline_array = dmatrix(design_info, df.to_pandas(), return_type="dataframe").values
+
+    with model:
+        pm.set_data(
+            {
+                "player_idx": df["player_id"].to_physical().cast(pl.Int64).to_numpy(),
+                "spline_data": _spline_array,
+            }
+        )
+        df_y = pm.sample_posterior_predictive(
+            idata, var_names=[var_name], extend_inferencedata=False
+        )
+
+    _df = pl.from_pandas(
+        df_y.posterior_predictive[var_name].to_dataframe().reset_index()
+    )
+
+    _df.columns = ["chain", "draw", "__obs__", var_name]
+
+    return _df
+
+def create_fgoe_table(df: pl.DataFrame) -> pl.DataFrame:
+    """
+    Take the player, distance dataframe and calculate FGOE by
+    subtracting the probability without player effect from the probability
+    with player effects. This gives the foundation of ways to evaluate kickers.
+
+    Returns:
+        pl.DataFrame
+    """
+    _df_epred_baseline = add_avg_draws(df)
+    _df_epred = add_epred_draws(df, "p")
+
+    cols = [
+        x
+        for x in ["player_name", "player_id", "distance", "success"]
+        if x in df.columns
     ]
-    .groupby(["chain", "draw", "player_name", "player_id"], observed=True)
-    .agg({"fgoe": "sum"})
-    .reset_index()
+    df_fgoe = (
+        df.select(cols)
+        .with_row_index("__obs__")
+        .join(_df_epred_baseline, on="__obs__")
+        .join(_df_epred, on=["chain", "draw", "__obs__"])
+        .with_columns(fgoe=pl.col("p") - pl.col("p_baseline"))
+    )
+
+    return df_fgoe
+
+```
+
+##### 2018 observed data
+
+```{python}
+# | warning: false
+
+df_2018 = df.filter(pl.col("season") == 2018)
+df_fgoe = create_fgoe_table(df_2018)
+
+df_tfgoe = (
+    df_fgoe.with_columns(fgoe=pl.col("success") - pl.col("p_baseline"))
+    .group_by(["chain", "draw", "player_name", "player_id"])
+    .agg(pl.col("fgoe").sum())
 )
 
-ggpointinterval(df_fgoe, title='Traditional FGOE - 2018', axis_label='Traditional FGOE')
+ggpointinterval(
+    df_tfgoe,
+    title="Traditional FGOE - 2018",
+    axis_label="Traditional FGOE",
+)
 ```
 
 The problem with this metric? Justin Tucker is represented as a replacement-level kicker or worse in 2018? Historically, Tucker has been one of the best kickers in the league going into the 2018 season. Pitching this metric and leaderboard in 2018 would have been difficult, and rightfully so.
@@ -572,30 +750,24 @@ The problem with this metric? Justin Tucker is represented as a replacement-leve
 Looking at the previous 2 seasons, Tucker's Traditional FGOE metric stood out amoung the rest.
 
 ```{python}
-# | code-fold: true
-df_before = df_model_pd[df_model_pd["season"].isin([2016, 2017])]
+#| code-fold: true
+#| warning: false
+df_before = df.filter(pl.col("season").is_in([2016, 2018]))
 
-df_before = (
-    model.predict(idata, data=df_before, inplace=False, include_group_specific=False)[
-        "posterior"
-    ]["p"]
-    .to_dataframe()
-    .reset_index()
-    .merge(df_before.assign(__obs__=lambda x: np.arange(x.shape[0])), on="__obs__")
-    .assign(fgoe=lambda x: x["success"] - x["p"])[
-        ["chain", "draw", "fgoe", "player_name", "player_id", "__obs__"]
-    ]
-    .groupby(["chain", "draw", "player_name", "player_id"], observed=True)
-    .agg({"fgoe": "sum"})
-    .reset_index()
+df_tfgoe_before = (
+    create_fgoe_table(df_before)
+    .with_columns(fgoe=pl.col("success") - pl.col("p_baseline"))
+    .group_by(["chain", "draw", "player_name", "player_id"])
+    .agg(pl.col("fgoe").sum())
 )
 
 ggpointinterval(
-    df_before,
+    df_tfgoe_before,
     title="Traditional FGOE by Player - 2016-2017",
     axis_label="Traditional FGOE",
-    axis_text_size=8
+    axis_text_size=8,
 )
+
 ```
 
 It isn't impossible, but it should be unlikely that he dropped from an outlier lead, to one of the worst in 6 weeks.
@@ -606,31 +778,34 @@ The problem with using this metric alone is that limited sample sizes can introd
 
 When blocked kicks are removed, the model results align a _little_ better with expectations.
 
+
 ```{python}
 # | code-fold: true
-df_fgoe_no_block = (
-    df_preds_18["posterior"]["p"]
-    .to_dataframe()
-    .reset_index()
-    .merge(
-        df_2018[~df_2018["field_goal_result"].isin(["Blocked"])].assign(
-            __obs__=lambda x: np.arange(x.shape[0])
-        ),
-        on="__obs__",
-    )
-    .assign(fgoe=lambda x: x["success"] - x["p"])[
-        ["chain", "draw", "fgoe", "player_name", "player_id", "__obs__"]
-    ]
-    .groupby(["chain", "draw", "player_name", "player_id"], observed=True)
-    .agg({"fgoe": "sum"})
-    .reset_index()
+# | warning: false
+
+df_2018 = df.filter(pl.col("season") == 2018).filter(
+    pl.col("field_goal_result") != "Blocked"
 )
 
-ggpointinterval(df_fgoe_no_block, title="Traditional FGOE - 2018 | Blocks Removed", axis_label='Traditional FGOE')
+df_tfgoe_wout_blocks = (
+    create_fgoe_table(df_2018)
+    .with_columns(fgoe=pl.col("success") - pl.col("p_baseline"))
+    .group_by(["chain", "draw", "player_name", "player_id"])
+    .agg(pl.col("fgoe").sum())
+)
+
+ggpointinterval(
+    df_tfgoe_wout_blocks,
+    title="Traditional FGOE - 2018 | Blocks Removed",
+    axis_label="Traditional FGOE",
+)
+
 ```
 
 However, this approach is arbitrary as it requires manual intervention that doesn't provide a way to account for such events within the model itself, highlighting the need for a better solution.
+
 ---
+
 
 ### Simulated FGOE
 
@@ -640,45 +815,41 @@ The model allows us to extract each player's parameter distributions as well as 
 
 I chose a linear interval of kicks from 25-60 yards. This decision is arbitrary, but prioritizes simplicity and represents the first step toward gaining organizational buy-in for the leaderboard.
 
+
+
 ```{python}
+# | warning: false
 
-df_grid_18 = create_grid(df_model_pd)
-
-# Get posterior predictions without group effects
-avg_preds = model.predict(
-    idata, data=df_grid_18, inplace=False, include_group_specific=False
-)
-
-# posterior predictions on grid
-preds = model.predict(idata, data=df_grid_18, inplace=False)
-
-df_pred = preds.posterior["p"].to_dataframe().reset_index()
-df_avg_pred = avg_preds["posterior"]["p"].to_dataframe().reset_index()
-
-# take the predictions form the players and subtract the posterior predictions without group effects. This provides the main source of the metric for simulated FGOE
-df_sfgoe = (
-    df_pred.merge(df_avg_pred, on=["chain", "draw", "__obs__"], how="inner")
-    .merge(
-        df_grid_18[["player_id", "player_name", "distance", "__obs__"]],
-        on=["__obs__"],
-        how="left",
+df_grid = (
+    df.filter(pl.col("season") == 2018)
+    .select(["player_id", "player_name"])
+    .unique()
+    .join(
+        pl.DataFrame({"distance": [x for x in range(25, 61)]}).with_columns(
+            distance_std=(pl.col("distance") - pl.col("distance").mean())
+            / pl.col("distance").std()
+        ),
+        how="cross",
     )
-    .assign(fgoe=lambda x: x["p_x"] - x["p_y"])  # players expectation - avg
 )
 
-# polars for efficient aggregation
-df_output = (
-    pl.from_pandas(df_sfgoe)
-    .group_by(["player_id", "player_name", "draw", "chain"])
-    .agg(pl.col("fgoe").sum())
+df_grid
+
+df_fgoe = create_fgoe_table(df_grid)
+
+df_sfgoe = df_fgoe.group_by(["chain", "draw", "player_name", "player_id"]).agg(
+    pl.col("fgoe").sum()
 )
 
-df_output.group_by(["player_name", "player_id"]).agg(
-    fgoe_mean=pl.col("fgoe").mean(), simulations=pl.len()
+ggpointinterval(
+    df_sfgoe,
+    title="Simulated FGOE - 2018",
+    axis_label="Simulated FGOE",
 )
 ```
 
-With the simulation of kicks, we can now look at a **Simulated FGOE**. This operates at the scale of posterior sample draws, with each player having 4,000 simulations across a distribution of kicks. This method provides the ability to quantify uncertainty within the estimates and examine the range of potential outcomes, while addressing the sample size problem of a traditional FGOE.
+
+With the simulation of kicks, we can now look at **Simulated FGOE**. This operates at the scale of posterior sample draws, with each player having 4,000 simulations across a distribution of kicks. This method provides the ability to quantify uncertainty within the estimates and examine the range of potential outcomes, while addressing the sample size problem of a traditional FGOE.
 
 #### Plotting Simulated FGOE
 
@@ -686,10 +857,6 @@ The plot below shows the posterior distributions of simulated FGOE. Compared to 
 
 For example, Justin Tucker’s median rating falls between 1 and 4 field goals over expected, with a central estimate of approximately 2.5. That’s far more intuitive and communicable than saying _the player’s log-odds intercept increases by 0.2 to 0.8 after adjusting for distance_.
 
-```{python}
-# | code-fold: true
-ggpointinterval(df_output, title='Simulated FGOE Distributions - 2018', axis_label='Simulated FGOE')
-```
 
 #### Comparing output
 
@@ -699,28 +866,32 @@ To compare traditional and simulated FGOE, we examine their posterior distributi
 The models aren't necesarily 1:1 comparisons of the same distribution of kicks, because with the traditional FGOE we are limited to the kicks that the kicker attempted. Simulated FGOE is applied to the same set of kicks for each kicker. It is more important to look directionally at each model. Easily shown is Justin Tucker is firmly at the top of the list, without having to adjust arbitrarily for blocked kicks.
 :::
 
-```{python}
-# | code-fold: true
 
-df_comparison = pl.concat(
-    [
-        df_output.with_columns(model=pl.lit("Simulated")),
-        pl.from_pandas(df_fgoe)
-        .with_columns(model=pl.lit("Traditional"))
-        .select(["player_id", "player_name", "draw", "chain", "fgoe", "model"]),
-    ]
+```{python}
+#| code-fold: true
+df_comparison = (
+    df_sfgoe.join(
+        df_tfgoe, on=["chain", "draw", "player_name", "player_id"], suffix="_t"
+    )
+    .unpivot(["fgoe", "fgoe_t"], index=["chain", "draw", "player_name", "player_id"])
+    .with_columns(
+        model = pl.when(pl.col("variable") == "fgoe")
+        .then(pl.lit("Simulated"))
+        .otherwise(pl.lit("Traditional"))
+    )
+    .rename({'value':'fgoe'})
 )
 
 df_comparison_r = pointrange_data(
     df_comparison, group=["player_id", "player_name", "model"]
 ).join(
-    df_output.group_by(["player_name", "player_id"]).agg(
+    df_sfgoe.group_by(["player_name", "player_id"]).agg(
         plot_sort=pl.col("fgoe").mean(), simulations=pl.len()
     ),
     on=["player_id", "player_name"],
 )
-
 df_comparison_r = title_name(df_comparison_r)
+
 (
     ggplot(
         df_comparison_r, aes("reorder(player_name, plot_sort)", "fgoe", color="model")
@@ -756,7 +927,9 @@ df_comparison_r = title_name(df_comparison_r)
     )
     + scale_color_manual(("#001e42", "#ff4b00"))
 )
+
 ```
+
 
 #### Which player would we prefer?
 
@@ -764,17 +937,13 @@ With the model parameters and simulation, even if a kicker hasn't attempted a 60
 
 ```{python}
 # | code-fold: true
-plot_df = pl.from_pandas(
-    df_sfgoe[df_sfgoe["player_name"].isin(["JUSTIN TUCKER", "ZANE GONZALEZ"])].assign(
-        player_name=lambda x: x["player_name"].astype(str)
-    )
-)
+plot_df = df_fgoe.filter(pl.col('player_name').is_in(['JUSTIN TUCKER', 'ROBERTO AGUAYO'])).with_columns(pl.col('player_name').cast(pl.Utf8))
 
 (
-    ggplot(aes("distance", "p_x", color="player_name"))
+    ggplot(aes("distance", "p", color="player_name"))
     + geom_ribbon(
         aes(y="fgoe", ymin="ymin", ymax="ymax", fill="player_name"),
-        data=pointrange_data(plot_df, field="p_x", group=["player_name", "distance"]),
+        data=pointrange_data(plot_df, field="p", group=["player_name", "distance"]),
         alpha=0.2,
         outline_type=element_blank(),
         show_legend={"color": False},
@@ -782,13 +951,13 @@ plot_df = pl.from_pandas(
     + geom_ribbon(
         aes(y="fgoe", ymin="hdi_lower", ymax="hdi_upper", fill="player_name"),
         # fill="#00000053",
-        data=pointrange_data(plot_df, field="p_x", group=["player_name", "distance"]),
+        data=pointrange_data(plot_df, field="p", group=["player_name", "distance"]),
         alpha=0.4,
         outline_type=element_blank(),
         show_legend={"color": False},
     )
     + geom_line(
-        data=plot_df.group_by(["player_name", "distance"]).agg(pl.col("p_x").mean()),
+        data=plot_df.group_by(["player_name", "distance"]).agg(pl.col("p").mean()),
         size=1.5,
         show_legend=False
     )
@@ -805,6 +974,7 @@ plot_df = pl.from_pandas(
     + scale_fill_manual(values=(palette[-1], palette[0]))
 )
 ```
+
 
 ## Leaderboard
 
@@ -887,7 +1057,7 @@ def create_leaderboard(df: pl.DataFrame) -> pl.DataFrame:
     return leaderboard
 
 
-leaderboard = create_leaderboard(df_output)
+leaderboard = create_leaderboard(df_sfgoe)
 leaderboard.write_csv("leaderboard.csv")
 
 (

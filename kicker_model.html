@@ -331,7 +331,7 @@ Note
 <div class="sourceCode cell-code" id="cb3"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a>df_plot <span class="op">=</span> df.group_by(<span class="st">"distance"</span>).agg(pl.col(<span class="st">"success"</span>).<span class="bu">sum</span>() <span class="op">/</span> pl.count(<span class="st">"success"</span>))</span>
 <span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a>(</span>
 <span id="cb3-3"><a href="#cb3-3" aria-hidden="true" tabindex="-1"></a>    ggplot(df_plot, aes(<span class="st">"distance"</span>, <span class="st">"success"</span>))</span>
-<span id="cb3-4"><a href="#cb3-4" aria-hidden="true" tabindex="-1"></a>    <span class="op">+</span> geom_smooth(color <span class="op">=</span> palette[<span class="dv">0</span>])</span>
+<span id="cb3-4"><a href="#cb3-4" aria-hidden="true" tabindex="-1"></a>    <span class="op">+</span> geom_smooth(color <span class="op">=</span> palette[<span class="dv">0</span>], se <span class="op">=</span> <span class="va">False</span>) <span class="co"># 'lowess CI isn't avialble yet'</span></span>
 <span id="cb3-5"><a href="#cb3-5" aria-hidden="true" tabindex="-1"></a>    <span class="op">+</span> geom_point(alpha <span class="op">=</span> <span class="fl">0.2</span>, color<span class="op">=</span>palette[<span class="dv">0</span>])</span>
 <span id="cb3-6"><a href="#cb3-6" aria-hidden="true" tabindex="-1"></a>    <span class="op">+</span> labs(</span>
 <span id="cb3-7"><a href="#cb3-7" aria-hidden="true" tabindex="-1"></a>        title<span class="op">=</span><span class="st">"Success Rate by Distance - Observed Data"</span>,</span>
@@ -495,11 +495,11 @@ y_i &amp;\sim \operatorname{Bernoulli}(p_i) \\
 Initializing NUTS using jitter+adapt_diag...
 Sequential sampling (4 chains in 1 job)
 NUTS: [Intercept, bs(distance, df=4, intercept=False), 1|player_id_sigma, 1|player_id_offset]
-Sampling 4 chains for 1_000 tune and 1_000 draw iterations (4_000 + 4_000 draws total) took 91 seconds.</code></pre>
+Sampling 4 chains for 1_000 tune and 1_000 draw iterations (4_000 + 4_000 draws total) took 77 seconds.</code></pre>
 </div>
 <div class="cell-output cell-output-display">
 <script type="application/vnd.jupyter.widget-view+json">
-{"model_id":"5695bfe3adbe4928b2a97a35039b77fb","version_major":2,"version_minor":0,"quarto_mimetype":"application/vnd.jupyter.widget-view+json"}
+{"model_id":"161e67f178194e28bcb439e17b901d6d","version_major":2,"version_minor":0,"quarto_mimetype":"application/vnd.jupyter.widget-view+json"}
 </script>
 </div>
 <div class="cell-output cell-output-display">
@@ -508,28 +508,94 @@ Sampling 4 chains for 1_000 tune and 1_000 draw iterations (4_000 + 4_000 draws 
 </div>
 <p>Another diagnostic tool in Bayesian models is to check the Markov Chain Monte Carlo (MCMC) algorithm. While these diagnostics don’t account for causality or domain-specific modeling checks, it ensures the MCMC algorithm is working as expected. All chains converged without divergent transitions, and effective sample sizes are adequate.</p>
 </section>
-</section>
-<section id="player-effects" class="level3">
-<h3 class="anchored" data-anchor-id="player-effects">Player Effects</h3>
-<p>The table below summarizes the posterior distributions for each player’s individual effect (intercept) after accounting for kick distance.</p>
+<section id="assesing-fit" class="level4">
+<h4 class="anchored" data-anchor-id="assesing-fit">Assesing Fit</h4>
+<p>The plot below shows that the model produces predictions consistent with the observed data, suggesting that the model’s assumptions and structure are appropriate for summarizing performance.</p>
 <div class="cell" data-execution_count="8">
+<div class="sourceCode cell-code" id="cb12"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb12-1"><a href="#cb12-1" aria-hidden="true" tabindex="-1"></a>model.predict(idata, kind<span class="op">=</span><span class="st">"response"</span>)</span>
+<span id="cb12-2"><a href="#cb12-2" aria-hidden="true" tabindex="-1"></a>df_ppd <span class="op">=</span> pl.from_pandas(</span>
+<span id="cb12-3"><a href="#cb12-3" aria-hidden="true" tabindex="-1"></a>    az.extract(idata, group<span class="op">=</span><span class="st">"posterior_predictive"</span>, num_samples<span class="op">=</span><span class="dv">100</span>)</span>
+<span id="cb12-4"><a href="#cb12-4" aria-hidden="true" tabindex="-1"></a>    .to_dataframe()[<span class="st">"success"</span>]</span>
+<span id="cb12-5"><a href="#cb12-5" aria-hidden="true" tabindex="-1"></a>    .reset_index()</span>
+<span id="cb12-6"><a href="#cb12-6" aria-hidden="true" tabindex="-1"></a>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+<div class="cell" data-execution_count="9">
 <details>
 <summary>Code</summary>
-<div class="sourceCode cell-code" id="cb12"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb12-1"><a href="#cb12-1" aria-hidden="true" tabindex="-1"></a>az.summary(idata, var_names<span class="op">=</span><span class="st">"1|player_id"</span>).reset_index().assign(</span>
-<span id="cb12-2"><a href="#cb12-2" aria-hidden="true" tabindex="-1"></a>    player_id<span class="op">=</span><span class="kw">lambda</span> x: x[<span class="st">"index"</span>].<span class="bu">str</span>.extract(<span class="vs">r"player_id\[(\d+)\]"</span>)</span>
-<span id="cb12-3"><a href="#cb12-3" aria-hidden="true" tabindex="-1"></a>).merge(</span>
-<span id="cb12-4"><a href="#cb12-4" aria-hidden="true" tabindex="-1"></a>    df_model_pd[[<span class="st">"player_id"</span>, <span class="st">"player_name"</span>]]</span>
-<span id="cb12-5"><a href="#cb12-5" aria-hidden="true" tabindex="-1"></a>    .drop_duplicates()</span>
-<span id="cb12-6"><a href="#cb12-6" aria-hidden="true" tabindex="-1"></a>    .assign(player_id<span class="op">=</span><span class="kw">lambda</span> x: x.player_id.astype(<span class="bu">str</span>))</span>
-<span id="cb12-7"><a href="#cb12-7" aria-hidden="true" tabindex="-1"></a>).assign(</span>
-<span id="cb12-8"><a href="#cb12-8" aria-hidden="true" tabindex="-1"></a>    index<span class="op">=</span><span class="kw">lambda</span> x: x.player_name</span>
-<span id="cb12-9"><a href="#cb12-9" aria-hidden="true" tabindex="-1"></a>).drop(</span>
-<span id="cb12-10"><a href="#cb12-10" aria-hidden="true" tabindex="-1"></a>    [<span class="st">"player_id"</span>, <span class="st">"player_name"</span>], axis<span class="op">=</span><span class="dv">1</span></span>
-<span id="cb12-11"><a href="#cb12-11" aria-hidden="true" tabindex="-1"></a>).rename(</span>
-<span id="cb12-12"><a href="#cb12-12" aria-hidden="true" tabindex="-1"></a>    columns<span class="op">=</span>{<span class="st">"index"</span>: <span class="st">"player_name"</span>}</span>
-<span id="cb12-13"><a href="#cb12-13" aria-hidden="true" tabindex="-1"></a>).sort_values(<span class="st">'mean'</span>, ascending<span class="op">=</span><span class="va">False</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode cell-code" id="cb13"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb13-1"><a href="#cb13-1" aria-hidden="true" tabindex="-1"></a>(</span>
+<span id="cb13-2"><a href="#cb13-2" aria-hidden="true" tabindex="-1"></a>    ggplot(aes(<span class="st">"success"</span>, <span class="st">"len"</span>))</span>
+<span id="cb13-3"><a href="#cb13-3" aria-hidden="true" tabindex="-1"></a>    <span class="op">+</span> geom_col(</span>
+<span id="cb13-4"><a href="#cb13-4" aria-hidden="true" tabindex="-1"></a>        aes(group<span class="op">=</span><span class="st">"draw"</span>, color<span class="op">=</span><span class="st">"t"</span>),</span>
+<span id="cb13-5"><a href="#cb13-5" aria-hidden="true" tabindex="-1"></a>        position<span class="op">=</span><span class="st">"identity"</span>,</span>
+<span id="cb13-6"><a href="#cb13-6" aria-hidden="true" tabindex="-1"></a>        fill<span class="op">=</span><span class="va">None</span>,</span>
+<span id="cb13-7"><a href="#cb13-7" aria-hidden="true" tabindex="-1"></a>        alpha<span class="op">=</span><span class="fl">0.01</span>,</span>
+<span id="cb13-8"><a href="#cb13-8" aria-hidden="true" tabindex="-1"></a>        data<span class="op">=</span>(</span>
+<span id="cb13-9"><a href="#cb13-9" aria-hidden="true" tabindex="-1"></a>            df_ppd.group_by([<span class="st">"chain"</span>, <span class="st">"draw"</span>, <span class="st">"success"</span>])</span>
+<span id="cb13-10"><a href="#cb13-10" aria-hidden="true" tabindex="-1"></a>            .<span class="bu">len</span>()</span>
+<span id="cb13-11"><a href="#cb13-11" aria-hidden="true" tabindex="-1"></a>            .with_columns(t<span class="op">=</span>pl.lit(<span class="st">"Posterior predictive"</span>))</span>
+<span id="cb13-12"><a href="#cb13-12" aria-hidden="true" tabindex="-1"></a>        ),</span>
+<span id="cb13-13"><a href="#cb13-13" aria-hidden="true" tabindex="-1"></a>    )</span>
+<span id="cb13-14"><a href="#cb13-14" aria-hidden="true" tabindex="-1"></a>    <span class="co"># + geom_col(</span></span>
+<span id="cb13-15"><a href="#cb13-15" aria-hidden="true" tabindex="-1"></a>    <span class="co">#     aes(color="t"),</span></span>
+<span id="cb13-16"><a href="#cb13-16" aria-hidden="true" tabindex="-1"></a>    <span class="co">#     fill=None,</span></span>
+<span id="cb13-17"><a href="#cb13-17" aria-hidden="true" tabindex="-1"></a>    <span class="co">#     size=1.5,</span></span>
+<span id="cb13-18"><a href="#cb13-18" aria-hidden="true" tabindex="-1"></a>    <span class="co">#     data=(</span></span>
+<span id="cb13-19"><a href="#cb13-19" aria-hidden="true" tabindex="-1"></a>    <span class="co">#         df_ppd.group_by(["chain", "draw", "success"])</span></span>
+<span id="cb13-20"><a href="#cb13-20" aria-hidden="true" tabindex="-1"></a>    <span class="co">#         .len()</span></span>
+<span id="cb13-21"><a href="#cb13-21" aria-hidden="true" tabindex="-1"></a>    <span class="co">#         .group_by("success")</span></span>
+<span id="cb13-22"><a href="#cb13-22" aria-hidden="true" tabindex="-1"></a>    <span class="co">#         .agg(pl.col("len").mean())</span></span>
+<span id="cb13-23"><a href="#cb13-23" aria-hidden="true" tabindex="-1"></a>    <span class="co">#         .with_columns(t=pl.lit("Posterior predictive mean"))</span></span>
+<span id="cb13-24"><a href="#cb13-24" aria-hidden="true" tabindex="-1"></a>    <span class="co">#     ),</span></span>
+<span id="cb13-25"><a href="#cb13-25" aria-hidden="true" tabindex="-1"></a>    <span class="co">#     alpha=0.1,</span></span>
+<span id="cb13-26"><a href="#cb13-26" aria-hidden="true" tabindex="-1"></a>    <span class="co"># )</span></span>
+<span id="cb13-27"><a href="#cb13-27" aria-hidden="true" tabindex="-1"></a>    <span class="op">+</span> geom_col(</span>
+<span id="cb13-28"><a href="#cb13-28" aria-hidden="true" tabindex="-1"></a>        aes(color<span class="op">=</span><span class="st">"t"</span>),</span>
+<span id="cb13-29"><a href="#cb13-29" aria-hidden="true" tabindex="-1"></a>        fill<span class="op">=</span><span class="va">None</span>,</span>
+<span id="cb13-30"><a href="#cb13-30" aria-hidden="true" tabindex="-1"></a>        size<span class="op">=</span><span class="fl">1.5</span>,</span>
+<span id="cb13-31"><a href="#cb13-31" aria-hidden="true" tabindex="-1"></a>        data<span class="op">=</span>(df.group_by([<span class="st">"success"</span>]).<span class="bu">len</span>().with_columns(t<span class="op">=</span>pl.lit(<span class="st">"Observed"</span>))),</span>
+<span id="cb13-32"><a href="#cb13-32" aria-hidden="true" tabindex="-1"></a>        alpha<span class="op">=</span><span class="fl">0.02</span>,</span>
+<span id="cb13-33"><a href="#cb13-33" aria-hidden="true" tabindex="-1"></a>    )</span>
+<span id="cb13-34"><a href="#cb13-34" aria-hidden="true" tabindex="-1"></a>    <span class="op">+</span> theme_minimal()</span>
+<span id="cb13-35"><a href="#cb13-35" aria-hidden="true" tabindex="-1"></a>    <span class="op">+</span> labs(title<span class="op">=</span><span class="st">"Posterior Predictive Checks"</span>, x<span class="op">=</span><span class="st">"Success"</span>, y<span class="op">=</span><span class="st">"Count"</span>, color<span class="op">=</span><span class="st">""</span>)</span>
+<span id="cb13-36"><a href="#cb13-36" aria-hidden="true" tabindex="-1"></a>    <span class="op">+</span> scale_x_continuous(breaks<span class="op">=</span>[<span class="dv">0</span>, <span class="dv">1</span>])</span>
+<span id="cb13-37"><a href="#cb13-37" aria-hidden="true" tabindex="-1"></a>    <span class="op">+</span> theme(</span>
+<span id="cb13-38"><a href="#cb13-38" aria-hidden="true" tabindex="-1"></a>        panel_grid_minor<span class="op">=</span>element_blank(),</span>
+<span id="cb13-39"><a href="#cb13-39" aria-hidden="true" tabindex="-1"></a>        panel_grid_major_x<span class="op">=</span>element_blank(),</span>
+<span id="cb13-40"><a href="#cb13-40" aria-hidden="true" tabindex="-1"></a>        legend_position<span class="op">=</span>(<span class="fl">0.1</span>, <span class="dv">1</span>),</span>
+<span id="cb13-41"><a href="#cb13-41" aria-hidden="true" tabindex="-1"></a>        legend_background<span class="op">=</span>element_blank(),</span>
+<span id="cb13-42"><a href="#cb13-42" aria-hidden="true" tabindex="-1"></a>    )</span>
+<span id="cb13-43"><a href="#cb13-43" aria-hidden="true" tabindex="-1"></a>    <span class="op">+</span> scale_color_manual(values<span class="op">=</span>(palette[<span class="dv">2</span>], palette[<span class="op">-</span><span class="dv">1</span>]))</span>
+<span id="cb13-44"><a href="#cb13-44" aria-hidden="true" tabindex="-1"></a>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 </details>
-<div class="cell-output cell-output-display" data-execution_count="8">
+<div class="cell-output cell-output-display">
+<p><img src="kicker_model_files/figure-html/cell-10-output-1.png" width="672" height="480"></p>
+</div>
+</div>
+</section>
+</section>
+<section id="parameters" class="level3">
+<h3 class="anchored" data-anchor-id="parameters">Parameters</h3>
+<section id="player-effects" class="level4">
+<h4 class="anchored" data-anchor-id="player-effects">Player Effects</h4>
+<p>The table below summarizes the posterior distributions for each player’s individual effect on the baseline probability of success, after controlling for kick distance.</p>
+<div class="cell" data-execution_count="10">
+<details>
+<summary>Code</summary>
+<div class="sourceCode cell-code" id="cb14"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb14-1"><a href="#cb14-1" aria-hidden="true" tabindex="-1"></a>az.summary(idata, var_names<span class="op">=</span><span class="st">"1|player_id"</span>).reset_index().assign(</span>
+<span id="cb14-2"><a href="#cb14-2" aria-hidden="true" tabindex="-1"></a>    player_id<span class="op">=</span><span class="kw">lambda</span> x: x[<span class="st">"index"</span>].<span class="bu">str</span>.extract(<span class="vs">r"player_id\[(\d+)\]"</span>)</span>
+<span id="cb14-3"><a href="#cb14-3" aria-hidden="true" tabindex="-1"></a>).merge(</span>
+<span id="cb14-4"><a href="#cb14-4" aria-hidden="true" tabindex="-1"></a>    df_model_pd[[<span class="st">"player_id"</span>, <span class="st">"player_name"</span>]]</span>
+<span id="cb14-5"><a href="#cb14-5" aria-hidden="true" tabindex="-1"></a>    .drop_duplicates()</span>
+<span id="cb14-6"><a href="#cb14-6" aria-hidden="true" tabindex="-1"></a>    .assign(player_id<span class="op">=</span><span class="kw">lambda</span> x: x.player_id.astype(<span class="bu">str</span>))</span>
+<span id="cb14-7"><a href="#cb14-7" aria-hidden="true" tabindex="-1"></a>).assign(</span>
+<span id="cb14-8"><a href="#cb14-8" aria-hidden="true" tabindex="-1"></a>    index<span class="op">=</span><span class="kw">lambda</span> x: x.player_name</span>
+<span id="cb14-9"><a href="#cb14-9" aria-hidden="true" tabindex="-1"></a>).drop(</span>
+<span id="cb14-10"><a href="#cb14-10" aria-hidden="true" tabindex="-1"></a>    [<span class="st">"player_id"</span>, <span class="st">"player_name"</span>], axis<span class="op">=</span><span class="dv">1</span></span>
+<span id="cb14-11"><a href="#cb14-11" aria-hidden="true" tabindex="-1"></a>).rename(</span>
+<span id="cb14-12"><a href="#cb14-12" aria-hidden="true" tabindex="-1"></a>    columns<span class="op">=</span>{<span class="st">"index"</span>: <span class="st">"player_name"</span>}</span>
+<span id="cb14-13"><a href="#cb14-13" aria-hidden="true" tabindex="-1"></a>).sort_values(<span class="st">'mean'</span>, ascending<span class="op">=</span><span class="va">False</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</details>
+<div class="cell-output cell-output-display" data-execution_count="10">
 <div>
 
 
@@ -700,14 +766,14 @@ Sampling 4 chains for 1_000 tune and 1_000 draw iterations (4_000 + 4_000 draws 
 </div>
 </div>
 </div>
-<p>While these individual player effects help understand the model’s insights into each kicker’s baseline skill, their direct interpretation as raw coefficients can be challenging to communicate to non-technical stakeholders as an intuitive standalone evaluation metric. This is why I will move towards the Simulated Field Goal Over Expected (FGOE), which translates these effects into a more relatable and actionable “rating” of expected performance on a standardized set of kicks.</p>
+<p>While these individual player effects help understand the model’s insights into each kicker’s baseline skill, their direct interpretation as raw coefficients can be challenging to communicate to non-technical stakeholders as an intuitive standalone evaluation metric. This is why I will move towards the Simulated Field Goal Over Expected (FGOE), which translates these effects into a more relatable and actionable rating of expected performance on a standardized set of kicks.</p>
 </section>
-<section id="spline" class="level3">
-<h3 class="anchored" data-anchor-id="spline">Spline</h3>
-<p>Splines togehter with field goal distance were used, and the following discusses how those work with the model. The table below shows the summary of spline coefficient distributions.</p>
-<div class="cell" data-execution_count="9">
-<div class="sourceCode cell-code" id="cb13"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb13-1"><a href="#cb13-1" aria-hidden="true" tabindex="-1"></a>az.summary(idata, var_names<span class="op">=</span>[<span class="st">"Intercept"</span>, s])</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
-<div class="cell-output cell-output-display" data-execution_count="9">
+<section id="spline" class="level4">
+<h4 class="anchored" data-anchor-id="spline">Spline</h4>
+<p>The table below shows the summary of spline coefficient distributions.</p>
+<div class="cell" data-execution_count="11">
+<div class="sourceCode cell-code" id="cb15"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb15-1"><a href="#cb15-1" aria-hidden="true" tabindex="-1"></a>az.summary(idata, var_names<span class="op">=</span>[<span class="st">"Intercept"</span>, s])</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="11">
 <div>
 
 
@@ -793,55 +859,57 @@ Sampling 4 chains for 1_000 tune and 1_000 draw iterations (4_000 + 4_000 draws 
 </div>
 </div>
 </div>
-<p>Unlike player effect coefficients, they are not as easily interpretable in a table. The plots below are to help build an understanding of how they come together. There are 4 basis functions used in the model. Below is a plot of each basis function and it’s new shape after learning parameter weights.</p>
+<p>Unlike player effects, they are not as easily interpretable in a table. The plots below are to help build an understanding of how they come together.</p>
+</section>
 <section id="basis-functions" class="level4">
 <h4 class="anchored" data-anchor-id="basis-functions">Basis functions</h4>
-<div class="cell" data-execution_count="10">
+<p>There are 4 basis functions used in the model. Below is a plot of each basis function and it’s new shape after learning parameter weights.</p>
+<div class="cell" data-execution_count="12">
 <details>
 <summary>Code</summary>
-<div class="sourceCode cell-code" id="cb14"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb14-1"><a href="#cb14-1" aria-hidden="true" tabindex="-1"></a>idata.posterior[s].to_dataframe()</span>
-<span id="cb14-2"><a href="#cb14-2" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb14-3"><a href="#cb14-3" aria-hidden="true" tabindex="-1"></a>w <span class="op">=</span> idata.posterior[s].mean((<span class="st">"chain"</span>, <span class="st">"draw"</span>)).values</span>
-<span id="cb14-4"><a href="#cb14-4" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb14-5"><a href="#cb14-5" aria-hidden="true" tabindex="-1"></a>spline_basis <span class="op">=</span> pd.DataFrame(model.components[<span class="st">"p"</span>].design.common[s])</span>
-<span id="cb14-6"><a href="#cb14-6" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb14-7"><a href="#cb14-7" aria-hidden="true" tabindex="-1"></a>df_spline <span class="op">=</span> (</span>
-<span id="cb14-8"><a href="#cb14-8" aria-hidden="true" tabindex="-1"></a>    (spline_basis <span class="op">*</span> w.T)</span>
-<span id="cb14-9"><a href="#cb14-9" aria-hidden="true" tabindex="-1"></a>    .assign(distance<span class="op">=</span>df_model_pd[<span class="st">"distance"</span>])</span>
-<span id="cb14-10"><a href="#cb14-10" aria-hidden="true" tabindex="-1"></a>    .melt(<span class="st">"distance"</span>, var_name<span class="op">=</span><span class="st">"basis_idx"</span>, value_name<span class="op">=</span><span class="st">"value"</span>)</span>
-<span id="cb14-11"><a href="#cb14-11" aria-hidden="true" tabindex="-1"></a>    .assign(basis_idx<span class="op">=</span><span class="kw">lambda</span> x: x[<span class="st">"basis_idx"</span>].astype(<span class="bu">str</span>))</span>
-<span id="cb14-12"><a href="#cb14-12" aria-hidden="true" tabindex="-1"></a>)  <span class="co"># .query('distance &gt; 20')</span></span>
-<span id="cb14-13"><a href="#cb14-13" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb14-14"><a href="#cb14-14" aria-hidden="true" tabindex="-1"></a>(</span>
-<span id="cb14-15"><a href="#cb14-15" aria-hidden="true" tabindex="-1"></a>    ggplot(df_spline, aes(<span class="st">"distance"</span>, <span class="st">"value"</span>, color<span class="op">=</span><span class="st">"factor(basis_idx)"</span>))</span>
-<span id="cb14-16"><a href="#cb14-16" aria-hidden="true" tabindex="-1"></a>    <span class="op">+</span> geom_line(size <span class="op">=</span> <span class="fl">1.2</span>)</span>
-<span id="cb14-17"><a href="#cb14-17" aria-hidden="true" tabindex="-1"></a>    <span class="op">+</span> labs(title<span class="op">=</span><span class="st">"Basis Function Shape"</span>, color<span class="op">=</span><span class="st">"bf"</span>)</span>
-<span id="cb14-18"><a href="#cb14-18" aria-hidden="true" tabindex="-1"></a>    <span class="op">+</span> theme_minimal()</span>
-<span id="cb14-19"><a href="#cb14-19" aria-hidden="true" tabindex="-1"></a>    <span class="op">+</span> theme(legend_position<span class="op">=</span><span class="st">"top"</span>)</span>
-<span id="cb14-20"><a href="#cb14-20" aria-hidden="true" tabindex="-1"></a>    <span class="op">+</span> labs(x <span class="op">=</span> <span class="st">'Distance'</span>, y <span class="op">=</span> <span class="st">'Value'</span>)</span>
-<span id="cb14-21"><a href="#cb14-21" aria-hidden="true" tabindex="-1"></a>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode cell-code" id="cb16"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb16-1"><a href="#cb16-1" aria-hidden="true" tabindex="-1"></a>idata.posterior[s].to_dataframe()</span>
+<span id="cb16-2"><a href="#cb16-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb16-3"><a href="#cb16-3" aria-hidden="true" tabindex="-1"></a>w <span class="op">=</span> idata.posterior[s].mean((<span class="st">"chain"</span>, <span class="st">"draw"</span>)).values</span>
+<span id="cb16-4"><a href="#cb16-4" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb16-5"><a href="#cb16-5" aria-hidden="true" tabindex="-1"></a>spline_basis <span class="op">=</span> pd.DataFrame(model.components[<span class="st">"p"</span>].design.common[s])</span>
+<span id="cb16-6"><a href="#cb16-6" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb16-7"><a href="#cb16-7" aria-hidden="true" tabindex="-1"></a>df_spline <span class="op">=</span> (</span>
+<span id="cb16-8"><a href="#cb16-8" aria-hidden="true" tabindex="-1"></a>    (spline_basis <span class="op">*</span> w.T)</span>
+<span id="cb16-9"><a href="#cb16-9" aria-hidden="true" tabindex="-1"></a>    .assign(distance<span class="op">=</span>df_model_pd[<span class="st">"distance"</span>])</span>
+<span id="cb16-10"><a href="#cb16-10" aria-hidden="true" tabindex="-1"></a>    .melt(<span class="st">"distance"</span>, var_name<span class="op">=</span><span class="st">"basis_idx"</span>, value_name<span class="op">=</span><span class="st">"value"</span>)</span>
+<span id="cb16-11"><a href="#cb16-11" aria-hidden="true" tabindex="-1"></a>    .assign(basis_idx<span class="op">=</span><span class="kw">lambda</span> x: x[<span class="st">"basis_idx"</span>].astype(<span class="bu">str</span>))</span>
+<span id="cb16-12"><a href="#cb16-12" aria-hidden="true" tabindex="-1"></a>)  <span class="co"># .query('distance &gt; 20')</span></span>
+<span id="cb16-13"><a href="#cb16-13" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb16-14"><a href="#cb16-14" aria-hidden="true" tabindex="-1"></a>(</span>
+<span id="cb16-15"><a href="#cb16-15" aria-hidden="true" tabindex="-1"></a>    ggplot(df_spline, aes(<span class="st">"distance"</span>, <span class="st">"value"</span>, color<span class="op">=</span><span class="st">"factor(basis_idx)"</span>))</span>
+<span id="cb16-16"><a href="#cb16-16" aria-hidden="true" tabindex="-1"></a>    <span class="op">+</span> geom_line(size <span class="op">=</span> <span class="fl">1.2</span>)</span>
+<span id="cb16-17"><a href="#cb16-17" aria-hidden="true" tabindex="-1"></a>    <span class="op">+</span> labs(title<span class="op">=</span><span class="st">"Basis Function Shape"</span>, color<span class="op">=</span><span class="st">"bf"</span>)</span>
+<span id="cb16-18"><a href="#cb16-18" aria-hidden="true" tabindex="-1"></a>    <span class="op">+</span> theme_minimal()</span>
+<span id="cb16-19"><a href="#cb16-19" aria-hidden="true" tabindex="-1"></a>    <span class="op">+</span> theme(legend_position<span class="op">=</span><span class="st">"top"</span>)</span>
+<span id="cb16-20"><a href="#cb16-20" aria-hidden="true" tabindex="-1"></a>    <span class="op">+</span> labs(x <span class="op">=</span> <span class="st">'Distance'</span>, y <span class="op">=</span> <span class="st">'Value'</span>)</span>
+<span id="cb16-21"><a href="#cb16-21" aria-hidden="true" tabindex="-1"></a>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 </details>
 <div class="cell-output cell-output-display">
-<p><img src="kicker_model_files/figure-html/cell-11-output-1.png" width="672" height="480"></p>
+<p><img src="kicker_model_files/figure-html/cell-13-output-1.png" width="672" height="480"></p>
 </div>
 </div>
 </section>
 <section id="aggregated-spline" class="level4">
 <h4 class="anchored" data-anchor-id="aggregated-spline">Aggregated spline</h4>
 <p>Finally, they can be aggregated together to produce the estimated effect of distance on FG success.</p>
-<div class="cell" data-execution_count="11">
+<div class="cell" data-execution_count="13">
 <details>
 <summary>Code</summary>
-<div class="sourceCode cell-code" id="cb15"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb15-1"><a href="#cb15-1" aria-hidden="true" tabindex="-1"></a>(</span>
-<span id="cb15-2"><a href="#cb15-2" aria-hidden="true" tabindex="-1"></a>    ggplot(df_spline.groupby(<span class="st">"distance"</span>, as_index<span class="op">=</span><span class="va">False</span>)[<span class="st">"value"</span>].mean())</span>
-<span id="cb15-3"><a href="#cb15-3" aria-hidden="true" tabindex="-1"></a>    <span class="op">+</span> geom_line(aes(<span class="st">"distance"</span>, <span class="st">"value"</span>), size<span class="op">=</span><span class="fl">1.2</span>, color<span class="op">=</span>palette[<span class="dv">0</span>])</span>
-<span id="cb15-4"><a href="#cb15-4" aria-hidden="true" tabindex="-1"></a>    <span class="op">+</span> labs(title<span class="op">=</span><span class="st">"General Spline Shape"</span>)</span>
-<span id="cb15-5"><a href="#cb15-5" aria-hidden="true" tabindex="-1"></a>    <span class="op">+</span> theme_minimal()</span>
-<span id="cb15-6"><a href="#cb15-6" aria-hidden="true" tabindex="-1"></a>    <span class="op">+</span> labs(x<span class="op">=</span><span class="st">"Distance"</span>, y<span class="op">=</span><span class="st">"Value"</span>)</span>
-<span id="cb15-7"><a href="#cb15-7" aria-hidden="true" tabindex="-1"></a>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode cell-code" id="cb17"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb17-1"><a href="#cb17-1" aria-hidden="true" tabindex="-1"></a>(</span>
+<span id="cb17-2"><a href="#cb17-2" aria-hidden="true" tabindex="-1"></a>    ggplot(df_spline.groupby(<span class="st">"distance"</span>, as_index<span class="op">=</span><span class="va">False</span>)[<span class="st">"value"</span>].mean())</span>
+<span id="cb17-3"><a href="#cb17-3" aria-hidden="true" tabindex="-1"></a>    <span class="op">+</span> geom_line(aes(<span class="st">"distance"</span>, <span class="st">"value"</span>), size<span class="op">=</span><span class="fl">1.2</span>, color<span class="op">=</span>palette[<span class="dv">0</span>])</span>
+<span id="cb17-4"><a href="#cb17-4" aria-hidden="true" tabindex="-1"></a>    <span class="op">+</span> labs(title<span class="op">=</span><span class="st">"General Spline Shape"</span>)</span>
+<span id="cb17-5"><a href="#cb17-5" aria-hidden="true" tabindex="-1"></a>    <span class="op">+</span> theme_minimal()</span>
+<span id="cb17-6"><a href="#cb17-6" aria-hidden="true" tabindex="-1"></a>    <span class="op">+</span> labs(x<span class="op">=</span><span class="st">"Distance"</span>, y<span class="op">=</span><span class="st">"Value"</span>)</span>
+<span id="cb17-7"><a href="#cb17-7" aria-hidden="true" tabindex="-1"></a>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 </details>
 <div class="cell-output cell-output-display">
-<p><img src="kicker_model_files/figure-html/cell-12-output-1.png" width="672" height="480"></p>
+<p><img src="kicker_model_files/figure-html/cell-14-output-1.png" width="672" height="480"></p>
 </div>
 </div>
 </section>
@@ -855,35 +923,35 @@ Sampling 4 chains for 1_000 tune and 1_000 draw iterations (4_000 + 4_000 draws 
 <section id="results" class="level4">
 <h4 class="anchored" data-anchor-id="results">2018 results</h4>
 <p>To calculate a traditional FGOE, the average expected probabilities accounting for distance and removing the player grouping effects can be used. FGOE is simply the observed event minus those expected probabilites. This can be done with any point estimate technique, and with a Bayesian model we have a distribution of estimates to use.</p>
-<div class="cell" data-execution_count="12">
-<div class="sourceCode cell-code" id="cb16"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb16-1"><a href="#cb16-1" aria-hidden="true" tabindex="-1"></a>df_2018 <span class="op">=</span> df_model_pd[df_model_pd[<span class="st">"season"</span>] <span class="op">==</span> <span class="dv">2018</span>]</span>
-<span id="cb16-2"><a href="#cb16-2" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb16-3"><a href="#cb16-3" aria-hidden="true" tabindex="-1"></a>df_tfgoe <span class="op">=</span> model.predict(</span>
-<span id="cb16-4"><a href="#cb16-4" aria-hidden="true" tabindex="-1"></a>    idata, data<span class="op">=</span>df_2018, inplace<span class="op">=</span><span class="va">False</span>, include_group_specific<span class="op">=</span><span class="va">False</span></span>
-<span id="cb16-5"><a href="#cb16-5" aria-hidden="true" tabindex="-1"></a>)</span>
-<span id="cb16-6"><a href="#cb16-6" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb16-7"><a href="#cb16-7" aria-hidden="true" tabindex="-1"></a>df_preds_18 <span class="op">=</span> model.predict(</span>
-<span id="cb16-8"><a href="#cb16-8" aria-hidden="true" tabindex="-1"></a>    idata, data<span class="op">=</span>df_2018, inplace<span class="op">=</span><span class="va">False</span>, include_group_specific<span class="op">=</span><span class="va">False</span></span>
-<span id="cb16-9"><a href="#cb16-9" aria-hidden="true" tabindex="-1"></a>)</span>
-<span id="cb16-10"><a href="#cb16-10" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb16-11"><a href="#cb16-11" aria-hidden="true" tabindex="-1"></a><span class="co"># takes the posterior predictive distribution and subtracts the</span></span>
-<span id="cb16-12"><a href="#cb16-12" aria-hidden="true" tabindex="-1"></a><span class="co"># predicted probability from the observed kicks</span></span>
-<span id="cb16-13"><a href="#cb16-13" aria-hidden="true" tabindex="-1"></a>df_fgoe <span class="op">=</span> (</span>
-<span id="cb16-14"><a href="#cb16-14" aria-hidden="true" tabindex="-1"></a>    df_preds_18[<span class="st">"posterior"</span>][<span class="st">"p"</span>]</span>
-<span id="cb16-15"><a href="#cb16-15" aria-hidden="true" tabindex="-1"></a>    .to_dataframe()</span>
-<span id="cb16-16"><a href="#cb16-16" aria-hidden="true" tabindex="-1"></a>    .reset_index()</span>
-<span id="cb16-17"><a href="#cb16-17" aria-hidden="true" tabindex="-1"></a>    .merge(df_2018.assign(__obs__<span class="op">=</span><span class="kw">lambda</span> x: np.arange(x.shape[<span class="dv">0</span>])), on<span class="op">=</span><span class="st">"__obs__"</span>)</span>
-<span id="cb16-18"><a href="#cb16-18" aria-hidden="true" tabindex="-1"></a>    .assign(fgoe<span class="op">=</span><span class="kw">lambda</span> x: x[<span class="st">"success"</span>] <span class="op">-</span> x[<span class="st">"p"</span>])[</span>
-<span id="cb16-19"><a href="#cb16-19" aria-hidden="true" tabindex="-1"></a>        [<span class="st">"chain"</span>, <span class="st">"draw"</span>, <span class="st">"fgoe"</span>, <span class="st">"player_name"</span>, <span class="st">"__obs__"</span>, <span class="st">"player_id"</span>]</span>
-<span id="cb16-20"><a href="#cb16-20" aria-hidden="true" tabindex="-1"></a>    ]</span>
-<span id="cb16-21"><a href="#cb16-21" aria-hidden="true" tabindex="-1"></a>    .groupby([<span class="st">"chain"</span>, <span class="st">"draw"</span>, <span class="st">"player_name"</span>, <span class="st">"player_id"</span>], observed<span class="op">=</span><span class="va">True</span>)</span>
-<span id="cb16-22"><a href="#cb16-22" aria-hidden="true" tabindex="-1"></a>    .agg({<span class="st">"fgoe"</span>: <span class="st">"sum"</span>})</span>
-<span id="cb16-23"><a href="#cb16-23" aria-hidden="true" tabindex="-1"></a>    .reset_index()</span>
-<span id="cb16-24"><a href="#cb16-24" aria-hidden="true" tabindex="-1"></a>)</span>
-<span id="cb16-25"><a href="#cb16-25" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb16-26"><a href="#cb16-26" aria-hidden="true" tabindex="-1"></a>ggpointinterval(df_fgoe, title<span class="op">=</span><span class="st">'Traditional FGOE - 2018'</span>, axis_label<span class="op">=</span><span class="st">'Traditional FGOE'</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell" data-execution_count="14">
+<div class="sourceCode cell-code" id="cb18"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb18-1"><a href="#cb18-1" aria-hidden="true" tabindex="-1"></a>df_2018 <span class="op">=</span> df_model_pd[df_model_pd[<span class="st">"season"</span>] <span class="op">==</span> <span class="dv">2018</span>]</span>
+<span id="cb18-2"><a href="#cb18-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb18-3"><a href="#cb18-3" aria-hidden="true" tabindex="-1"></a>df_tfgoe <span class="op">=</span> model.predict(</span>
+<span id="cb18-4"><a href="#cb18-4" aria-hidden="true" tabindex="-1"></a>    idata, data<span class="op">=</span>df_2018, inplace<span class="op">=</span><span class="va">False</span>, include_group_specific<span class="op">=</span><span class="va">False</span></span>
+<span id="cb18-5"><a href="#cb18-5" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb18-6"><a href="#cb18-6" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb18-7"><a href="#cb18-7" aria-hidden="true" tabindex="-1"></a>df_preds_18 <span class="op">=</span> model.predict(</span>
+<span id="cb18-8"><a href="#cb18-8" aria-hidden="true" tabindex="-1"></a>    idata, data<span class="op">=</span>df_2018, inplace<span class="op">=</span><span class="va">False</span>, include_group_specific<span class="op">=</span><span class="va">False</span></span>
+<span id="cb18-9"><a href="#cb18-9" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb18-10"><a href="#cb18-10" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb18-11"><a href="#cb18-11" aria-hidden="true" tabindex="-1"></a><span class="co"># takes the posterior predictive distribution and subtracts the</span></span>
+<span id="cb18-12"><a href="#cb18-12" aria-hidden="true" tabindex="-1"></a><span class="co"># predicted probability from the observed kicks</span></span>
+<span id="cb18-13"><a href="#cb18-13" aria-hidden="true" tabindex="-1"></a>df_fgoe <span class="op">=</span> (</span>
+<span id="cb18-14"><a href="#cb18-14" aria-hidden="true" tabindex="-1"></a>    df_preds_18[<span class="st">"posterior"</span>][<span class="st">"p"</span>]</span>
+<span id="cb18-15"><a href="#cb18-15" aria-hidden="true" tabindex="-1"></a>    .to_dataframe()</span>
+<span id="cb18-16"><a href="#cb18-16" aria-hidden="true" tabindex="-1"></a>    .reset_index()</span>
+<span id="cb18-17"><a href="#cb18-17" aria-hidden="true" tabindex="-1"></a>    .merge(df_2018.assign(__obs__<span class="op">=</span><span class="kw">lambda</span> x: np.arange(x.shape[<span class="dv">0</span>])), on<span class="op">=</span><span class="st">"__obs__"</span>)</span>
+<span id="cb18-18"><a href="#cb18-18" aria-hidden="true" tabindex="-1"></a>    .assign(fgoe<span class="op">=</span><span class="kw">lambda</span> x: x[<span class="st">"success"</span>] <span class="op">-</span> x[<span class="st">"p"</span>])[</span>
+<span id="cb18-19"><a href="#cb18-19" aria-hidden="true" tabindex="-1"></a>        [<span class="st">"chain"</span>, <span class="st">"draw"</span>, <span class="st">"fgoe"</span>, <span class="st">"player_name"</span>, <span class="st">"__obs__"</span>, <span class="st">"player_id"</span>]</span>
+<span id="cb18-20"><a href="#cb18-20" aria-hidden="true" tabindex="-1"></a>    ]</span>
+<span id="cb18-21"><a href="#cb18-21" aria-hidden="true" tabindex="-1"></a>    .groupby([<span class="st">"chain"</span>, <span class="st">"draw"</span>, <span class="st">"player_name"</span>, <span class="st">"player_id"</span>], observed<span class="op">=</span><span class="va">True</span>)</span>
+<span id="cb18-22"><a href="#cb18-22" aria-hidden="true" tabindex="-1"></a>    .agg({<span class="st">"fgoe"</span>: <span class="st">"sum"</span>})</span>
+<span id="cb18-23"><a href="#cb18-23" aria-hidden="true" tabindex="-1"></a>    .reset_index()</span>
+<span id="cb18-24"><a href="#cb18-24" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb18-25"><a href="#cb18-25" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb18-26"><a href="#cb18-26" aria-hidden="true" tabindex="-1"></a>ggpointinterval(df_fgoe, title<span class="op">=</span><span class="st">'Traditional FGOE - 2018'</span>, axis_label<span class="op">=</span><span class="st">'Traditional FGOE'</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-display">
-<p><img src="kicker_model_files/figure-html/cell-13-output-1.png" class="img-fluid"></p>
+<p><img src="kicker_model_files/figure-html/cell-15-output-1.png" class="img-fluid"></p>
 </div>
 </div>
 <p>The problem with this metric? Justin Tucker is represented as a replacement-level kicker or worse in 2018? Historically, Tucker has been one of the best kickers in the league going into the 2018 season. Pitching this metric and leaderboard in 2018 would have been difficult, and rightfully so.</p>
@@ -891,35 +959,35 @@ Sampling 4 chains for 1_000 tune and 1_000 draw iterations (4_000 + 4_000 draws 
 <section id="results-1" class="level4">
 <h4 class="anchored" data-anchor-id="results-1">2016-2017 results</h4>
 <p>Looking at the previous 2 seasons, Tucker’s Traditional FGOE metric stood out amoung the rest.</p>
-<div class="cell" data-execution_count="13">
+<div class="cell" data-execution_count="15">
 <details>
 <summary>Code</summary>
-<div class="sourceCode cell-code" id="cb17"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb17-1"><a href="#cb17-1" aria-hidden="true" tabindex="-1"></a>df_before <span class="op">=</span> df_model_pd[df_model_pd[<span class="st">"season"</span>].isin([<span class="dv">2016</span>, <span class="dv">2017</span>])]</span>
-<span id="cb17-2"><a href="#cb17-2" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb17-3"><a href="#cb17-3" aria-hidden="true" tabindex="-1"></a>df_before <span class="op">=</span> (</span>
-<span id="cb17-4"><a href="#cb17-4" aria-hidden="true" tabindex="-1"></a>    model.predict(idata, data<span class="op">=</span>df_before, inplace<span class="op">=</span><span class="va">False</span>, include_group_specific<span class="op">=</span><span class="va">False</span>)[</span>
-<span id="cb17-5"><a href="#cb17-5" aria-hidden="true" tabindex="-1"></a>        <span class="st">"posterior"</span></span>
-<span id="cb17-6"><a href="#cb17-6" aria-hidden="true" tabindex="-1"></a>    ][<span class="st">"p"</span>]</span>
-<span id="cb17-7"><a href="#cb17-7" aria-hidden="true" tabindex="-1"></a>    .to_dataframe()</span>
-<span id="cb17-8"><a href="#cb17-8" aria-hidden="true" tabindex="-1"></a>    .reset_index()</span>
-<span id="cb17-9"><a href="#cb17-9" aria-hidden="true" tabindex="-1"></a>    .merge(df_before.assign(__obs__<span class="op">=</span><span class="kw">lambda</span> x: np.arange(x.shape[<span class="dv">0</span>])), on<span class="op">=</span><span class="st">"__obs__"</span>)</span>
-<span id="cb17-10"><a href="#cb17-10" aria-hidden="true" tabindex="-1"></a>    .assign(fgoe<span class="op">=</span><span class="kw">lambda</span> x: x[<span class="st">"success"</span>] <span class="op">-</span> x[<span class="st">"p"</span>])[</span>
-<span id="cb17-11"><a href="#cb17-11" aria-hidden="true" tabindex="-1"></a>        [<span class="st">"chain"</span>, <span class="st">"draw"</span>, <span class="st">"fgoe"</span>, <span class="st">"player_name"</span>, <span class="st">"player_id"</span>, <span class="st">"__obs__"</span>]</span>
-<span id="cb17-12"><a href="#cb17-12" aria-hidden="true" tabindex="-1"></a>    ]</span>
-<span id="cb17-13"><a href="#cb17-13" aria-hidden="true" tabindex="-1"></a>    .groupby([<span class="st">"chain"</span>, <span class="st">"draw"</span>, <span class="st">"player_name"</span>, <span class="st">"player_id"</span>], observed<span class="op">=</span><span class="va">True</span>)</span>
-<span id="cb17-14"><a href="#cb17-14" aria-hidden="true" tabindex="-1"></a>    .agg({<span class="st">"fgoe"</span>: <span class="st">"sum"</span>})</span>
-<span id="cb17-15"><a href="#cb17-15" aria-hidden="true" tabindex="-1"></a>    .reset_index()</span>
-<span id="cb17-16"><a href="#cb17-16" aria-hidden="true" tabindex="-1"></a>)</span>
-<span id="cb17-17"><a href="#cb17-17" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb17-18"><a href="#cb17-18" aria-hidden="true" tabindex="-1"></a>ggpointinterval(</span>
-<span id="cb17-19"><a href="#cb17-19" aria-hidden="true" tabindex="-1"></a>    df_before,</span>
-<span id="cb17-20"><a href="#cb17-20" aria-hidden="true" tabindex="-1"></a>    title<span class="op">=</span><span class="st">"Traditional FGOE by Player - 2016-2017"</span>,</span>
-<span id="cb17-21"><a href="#cb17-21" aria-hidden="true" tabindex="-1"></a>    axis_label<span class="op">=</span><span class="st">"Traditional FGOE"</span>,</span>
-<span id="cb17-22"><a href="#cb17-22" aria-hidden="true" tabindex="-1"></a>    axis_text_size<span class="op">=</span><span class="dv">8</span></span>
-<span id="cb17-23"><a href="#cb17-23" aria-hidden="true" tabindex="-1"></a>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode cell-code" id="cb19"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb19-1"><a href="#cb19-1" aria-hidden="true" tabindex="-1"></a>df_before <span class="op">=</span> df_model_pd[df_model_pd[<span class="st">"season"</span>].isin([<span class="dv">2016</span>, <span class="dv">2017</span>])]</span>
+<span id="cb19-2"><a href="#cb19-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb19-3"><a href="#cb19-3" aria-hidden="true" tabindex="-1"></a>df_before <span class="op">=</span> (</span>
+<span id="cb19-4"><a href="#cb19-4" aria-hidden="true" tabindex="-1"></a>    model.predict(idata, data<span class="op">=</span>df_before, inplace<span class="op">=</span><span class="va">False</span>, include_group_specific<span class="op">=</span><span class="va">False</span>)[</span>
+<span id="cb19-5"><a href="#cb19-5" aria-hidden="true" tabindex="-1"></a>        <span class="st">"posterior"</span></span>
+<span id="cb19-6"><a href="#cb19-6" aria-hidden="true" tabindex="-1"></a>    ][<span class="st">"p"</span>]</span>
+<span id="cb19-7"><a href="#cb19-7" aria-hidden="true" tabindex="-1"></a>    .to_dataframe()</span>
+<span id="cb19-8"><a href="#cb19-8" aria-hidden="true" tabindex="-1"></a>    .reset_index()</span>
+<span id="cb19-9"><a href="#cb19-9" aria-hidden="true" tabindex="-1"></a>    .merge(df_before.assign(__obs__<span class="op">=</span><span class="kw">lambda</span> x: np.arange(x.shape[<span class="dv">0</span>])), on<span class="op">=</span><span class="st">"__obs__"</span>)</span>
+<span id="cb19-10"><a href="#cb19-10" aria-hidden="true" tabindex="-1"></a>    .assign(fgoe<span class="op">=</span><span class="kw">lambda</span> x: x[<span class="st">"success"</span>] <span class="op">-</span> x[<span class="st">"p"</span>])[</span>
+<span id="cb19-11"><a href="#cb19-11" aria-hidden="true" tabindex="-1"></a>        [<span class="st">"chain"</span>, <span class="st">"draw"</span>, <span class="st">"fgoe"</span>, <span class="st">"player_name"</span>, <span class="st">"player_id"</span>, <span class="st">"__obs__"</span>]</span>
+<span id="cb19-12"><a href="#cb19-12" aria-hidden="true" tabindex="-1"></a>    ]</span>
+<span id="cb19-13"><a href="#cb19-13" aria-hidden="true" tabindex="-1"></a>    .groupby([<span class="st">"chain"</span>, <span class="st">"draw"</span>, <span class="st">"player_name"</span>, <span class="st">"player_id"</span>], observed<span class="op">=</span><span class="va">True</span>)</span>
+<span id="cb19-14"><a href="#cb19-14" aria-hidden="true" tabindex="-1"></a>    .agg({<span class="st">"fgoe"</span>: <span class="st">"sum"</span>})</span>
+<span id="cb19-15"><a href="#cb19-15" aria-hidden="true" tabindex="-1"></a>    .reset_index()</span>
+<span id="cb19-16"><a href="#cb19-16" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb19-17"><a href="#cb19-17" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb19-18"><a href="#cb19-18" aria-hidden="true" tabindex="-1"></a>ggpointinterval(</span>
+<span id="cb19-19"><a href="#cb19-19" aria-hidden="true" tabindex="-1"></a>    df_before,</span>
+<span id="cb19-20"><a href="#cb19-20" aria-hidden="true" tabindex="-1"></a>    title<span class="op">=</span><span class="st">"Traditional FGOE by Player - 2016-2017"</span>,</span>
+<span id="cb19-21"><a href="#cb19-21" aria-hidden="true" tabindex="-1"></a>    axis_label<span class="op">=</span><span class="st">"Traditional FGOE"</span>,</span>
+<span id="cb19-22"><a href="#cb19-22" aria-hidden="true" tabindex="-1"></a>    axis_text_size<span class="op">=</span><span class="dv">8</span></span>
+<span id="cb19-23"><a href="#cb19-23" aria-hidden="true" tabindex="-1"></a>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 </details>
 <div class="cell-output cell-output-display">
-<p><img src="kicker_model_files/figure-html/cell-14-output-1.png" class="img-fluid"></p>
+<p><img src="kicker_model_files/figure-html/cell-16-output-1.png" class="img-fluid"></p>
 </div>
 </div>
 <p>It isn’t impossible, but it should be unlikely that he dropped from an outlier lead, to one of the worst in 6 weeks.</p>
@@ -928,31 +996,31 @@ Sampling 4 chains for 1_000 tune and 1_000 draw iterations (4_000 + 4_000 draws 
 <section id="results---without-blocks" class="level4">
 <h4 class="anchored" data-anchor-id="results---without-blocks">2018 results - without blocks</h4>
 <p>When blocked kicks are removed, the model results align a <em>little</em> better with expectations.</p>
-<div class="cell" data-execution_count="14">
+<div class="cell" data-execution_count="16">
 <details>
 <summary>Code</summary>
-<div class="sourceCode cell-code" id="cb18"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb18-1"><a href="#cb18-1" aria-hidden="true" tabindex="-1"></a>df_fgoe_no_block <span class="op">=</span> (</span>
-<span id="cb18-2"><a href="#cb18-2" aria-hidden="true" tabindex="-1"></a>    df_preds_18[<span class="st">"posterior"</span>][<span class="st">"p"</span>]</span>
-<span id="cb18-3"><a href="#cb18-3" aria-hidden="true" tabindex="-1"></a>    .to_dataframe()</span>
-<span id="cb18-4"><a href="#cb18-4" aria-hidden="true" tabindex="-1"></a>    .reset_index()</span>
-<span id="cb18-5"><a href="#cb18-5" aria-hidden="true" tabindex="-1"></a>    .merge(</span>
-<span id="cb18-6"><a href="#cb18-6" aria-hidden="true" tabindex="-1"></a>        df_2018[<span class="op">~</span>df_2018[<span class="st">"field_goal_result"</span>].isin([<span class="st">"Blocked"</span>])].assign(</span>
-<span id="cb18-7"><a href="#cb18-7" aria-hidden="true" tabindex="-1"></a>            __obs__<span class="op">=</span><span class="kw">lambda</span> x: np.arange(x.shape[<span class="dv">0</span>])</span>
-<span id="cb18-8"><a href="#cb18-8" aria-hidden="true" tabindex="-1"></a>        ),</span>
-<span id="cb18-9"><a href="#cb18-9" aria-hidden="true" tabindex="-1"></a>        on<span class="op">=</span><span class="st">"__obs__"</span>,</span>
-<span id="cb18-10"><a href="#cb18-10" aria-hidden="true" tabindex="-1"></a>    )</span>
-<span id="cb18-11"><a href="#cb18-11" aria-hidden="true" tabindex="-1"></a>    .assign(fgoe<span class="op">=</span><span class="kw">lambda</span> x: x[<span class="st">"success"</span>] <span class="op">-</span> x[<span class="st">"p"</span>])[</span>
-<span id="cb18-12"><a href="#cb18-12" aria-hidden="true" tabindex="-1"></a>        [<span class="st">"chain"</span>, <span class="st">"draw"</span>, <span class="st">"fgoe"</span>, <span class="st">"player_name"</span>, <span class="st">"player_id"</span>, <span class="st">"__obs__"</span>]</span>
-<span id="cb18-13"><a href="#cb18-13" aria-hidden="true" tabindex="-1"></a>    ]</span>
-<span id="cb18-14"><a href="#cb18-14" aria-hidden="true" tabindex="-1"></a>    .groupby([<span class="st">"chain"</span>, <span class="st">"draw"</span>, <span class="st">"player_name"</span>, <span class="st">"player_id"</span>], observed<span class="op">=</span><span class="va">True</span>)</span>
-<span id="cb18-15"><a href="#cb18-15" aria-hidden="true" tabindex="-1"></a>    .agg({<span class="st">"fgoe"</span>: <span class="st">"sum"</span>})</span>
-<span id="cb18-16"><a href="#cb18-16" aria-hidden="true" tabindex="-1"></a>    .reset_index()</span>
-<span id="cb18-17"><a href="#cb18-17" aria-hidden="true" tabindex="-1"></a>)</span>
-<span id="cb18-18"><a href="#cb18-18" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb18-19"><a href="#cb18-19" aria-hidden="true" tabindex="-1"></a>ggpointinterval(df_fgoe_no_block, title<span class="op">=</span><span class="st">"Traditional FGOE - 2018 | Blocks Removed"</span>, axis_label<span class="op">=</span><span class="st">'Traditional FGOE'</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode cell-code" id="cb20"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb20-1"><a href="#cb20-1" aria-hidden="true" tabindex="-1"></a>df_fgoe_no_block <span class="op">=</span> (</span>
+<span id="cb20-2"><a href="#cb20-2" aria-hidden="true" tabindex="-1"></a>    df_preds_18[<span class="st">"posterior"</span>][<span class="st">"p"</span>]</span>
+<span id="cb20-3"><a href="#cb20-3" aria-hidden="true" tabindex="-1"></a>    .to_dataframe()</span>
+<span id="cb20-4"><a href="#cb20-4" aria-hidden="true" tabindex="-1"></a>    .reset_index()</span>
+<span id="cb20-5"><a href="#cb20-5" aria-hidden="true" tabindex="-1"></a>    .merge(</span>
+<span id="cb20-6"><a href="#cb20-6" aria-hidden="true" tabindex="-1"></a>        df_2018[<span class="op">~</span>df_2018[<span class="st">"field_goal_result"</span>].isin([<span class="st">"Blocked"</span>])].assign(</span>
+<span id="cb20-7"><a href="#cb20-7" aria-hidden="true" tabindex="-1"></a>            __obs__<span class="op">=</span><span class="kw">lambda</span> x: np.arange(x.shape[<span class="dv">0</span>])</span>
+<span id="cb20-8"><a href="#cb20-8" aria-hidden="true" tabindex="-1"></a>        ),</span>
+<span id="cb20-9"><a href="#cb20-9" aria-hidden="true" tabindex="-1"></a>        on<span class="op">=</span><span class="st">"__obs__"</span>,</span>
+<span id="cb20-10"><a href="#cb20-10" aria-hidden="true" tabindex="-1"></a>    )</span>
+<span id="cb20-11"><a href="#cb20-11" aria-hidden="true" tabindex="-1"></a>    .assign(fgoe<span class="op">=</span><span class="kw">lambda</span> x: x[<span class="st">"success"</span>] <span class="op">-</span> x[<span class="st">"p"</span>])[</span>
+<span id="cb20-12"><a href="#cb20-12" aria-hidden="true" tabindex="-1"></a>        [<span class="st">"chain"</span>, <span class="st">"draw"</span>, <span class="st">"fgoe"</span>, <span class="st">"player_name"</span>, <span class="st">"player_id"</span>, <span class="st">"__obs__"</span>]</span>
+<span id="cb20-13"><a href="#cb20-13" aria-hidden="true" tabindex="-1"></a>    ]</span>
+<span id="cb20-14"><a href="#cb20-14" aria-hidden="true" tabindex="-1"></a>    .groupby([<span class="st">"chain"</span>, <span class="st">"draw"</span>, <span class="st">"player_name"</span>, <span class="st">"player_id"</span>], observed<span class="op">=</span><span class="va">True</span>)</span>
+<span id="cb20-15"><a href="#cb20-15" aria-hidden="true" tabindex="-1"></a>    .agg({<span class="st">"fgoe"</span>: <span class="st">"sum"</span>})</span>
+<span id="cb20-16"><a href="#cb20-16" aria-hidden="true" tabindex="-1"></a>    .reset_index()</span>
+<span id="cb20-17"><a href="#cb20-17" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb20-18"><a href="#cb20-18" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb20-19"><a href="#cb20-19" aria-hidden="true" tabindex="-1"></a>ggpointinterval(df_fgoe_no_block, title<span class="op">=</span><span class="st">"Traditional FGOE - 2018 | Blocks Removed"</span>, axis_label<span class="op">=</span><span class="st">'Traditional FGOE'</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 </details>
 <div class="cell-output cell-output-display">
-<p><img src="kicker_model_files/figure-html/cell-15-output-1.png" class="img-fluid"></p>
+<p><img src="kicker_model_files/figure-html/cell-17-output-1.png" class="img-fluid"></p>
 </div>
 </div>
 <p>However, this approach is arbitrary as it requires manual intervention that doesn’t provide a way to account for such events within the model itself, highlighting the need for a better solution.</p>
@@ -965,42 +1033,42 @@ Sampling 4 chains for 1_000 tune and 1_000 draw iterations (4_000 + 4_000 draws 
 <section id="standardized-kick-predictions" class="level4">
 <h4 class="anchored" data-anchor-id="standardized-kick-predictions">Standardized kick predictions</h4>
 <p>I chose a linear interval of kicks from 25-60 yards. This decision is arbitrary, but prioritizes simplicity and represents the first step toward gaining organizational buy-in for the leaderboard.</p>
-<div class="cell" data-execution_count="15">
-<div class="sourceCode cell-code" id="cb19"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb19-1"><a href="#cb19-1" aria-hidden="true" tabindex="-1"></a>df_grid_18 <span class="op">=</span> create_grid(df_model_pd)</span>
-<span id="cb19-2"><a href="#cb19-2" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb19-3"><a href="#cb19-3" aria-hidden="true" tabindex="-1"></a><span class="co"># Get posterior predictions without group effects</span></span>
-<span id="cb19-4"><a href="#cb19-4" aria-hidden="true" tabindex="-1"></a>avg_preds <span class="op">=</span> model.predict(</span>
-<span id="cb19-5"><a href="#cb19-5" aria-hidden="true" tabindex="-1"></a>    idata, data<span class="op">=</span>df_grid_18, inplace<span class="op">=</span><span class="va">False</span>, include_group_specific<span class="op">=</span><span class="va">False</span></span>
-<span id="cb19-6"><a href="#cb19-6" aria-hidden="true" tabindex="-1"></a>)</span>
-<span id="cb19-7"><a href="#cb19-7" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb19-8"><a href="#cb19-8" aria-hidden="true" tabindex="-1"></a><span class="co"># posterior predictions on grid</span></span>
-<span id="cb19-9"><a href="#cb19-9" aria-hidden="true" tabindex="-1"></a>preds <span class="op">=</span> model.predict(idata, data<span class="op">=</span>df_grid_18, inplace<span class="op">=</span><span class="va">False</span>)</span>
-<span id="cb19-10"><a href="#cb19-10" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb19-11"><a href="#cb19-11" aria-hidden="true" tabindex="-1"></a>df_pred <span class="op">=</span> preds.posterior[<span class="st">"p"</span>].to_dataframe().reset_index()</span>
-<span id="cb19-12"><a href="#cb19-12" aria-hidden="true" tabindex="-1"></a>df_avg_pred <span class="op">=</span> avg_preds[<span class="st">"posterior"</span>][<span class="st">"p"</span>].to_dataframe().reset_index()</span>
-<span id="cb19-13"><a href="#cb19-13" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb19-14"><a href="#cb19-14" aria-hidden="true" tabindex="-1"></a><span class="co"># take the predictions form the players and subtract the posterior predictions without group effects. This provides the main source of the metric for simulated FGOE</span></span>
-<span id="cb19-15"><a href="#cb19-15" aria-hidden="true" tabindex="-1"></a>df_sfgoe <span class="op">=</span> (</span>
-<span id="cb19-16"><a href="#cb19-16" aria-hidden="true" tabindex="-1"></a>    df_pred.merge(df_avg_pred, on<span class="op">=</span>[<span class="st">"chain"</span>, <span class="st">"draw"</span>, <span class="st">"__obs__"</span>], how<span class="op">=</span><span class="st">"inner"</span>)</span>
-<span id="cb19-17"><a href="#cb19-17" aria-hidden="true" tabindex="-1"></a>    .merge(</span>
-<span id="cb19-18"><a href="#cb19-18" aria-hidden="true" tabindex="-1"></a>        df_grid_18[[<span class="st">"player_id"</span>, <span class="st">"player_name"</span>, <span class="st">"distance"</span>, <span class="st">"__obs__"</span>]],</span>
-<span id="cb19-19"><a href="#cb19-19" aria-hidden="true" tabindex="-1"></a>        on<span class="op">=</span>[<span class="st">"__obs__"</span>],</span>
-<span id="cb19-20"><a href="#cb19-20" aria-hidden="true" tabindex="-1"></a>        how<span class="op">=</span><span class="st">"left"</span>,</span>
-<span id="cb19-21"><a href="#cb19-21" aria-hidden="true" tabindex="-1"></a>    )</span>
-<span id="cb19-22"><a href="#cb19-22" aria-hidden="true" tabindex="-1"></a>    .assign(fgoe<span class="op">=</span><span class="kw">lambda</span> x: x[<span class="st">"p_x"</span>] <span class="op">-</span> x[<span class="st">"p_y"</span>])  <span class="co"># players expectation - avg</span></span>
-<span id="cb19-23"><a href="#cb19-23" aria-hidden="true" tabindex="-1"></a>)</span>
-<span id="cb19-24"><a href="#cb19-24" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb19-25"><a href="#cb19-25" aria-hidden="true" tabindex="-1"></a><span class="co"># polars for efficient aggregation</span></span>
-<span id="cb19-26"><a href="#cb19-26" aria-hidden="true" tabindex="-1"></a>df_output <span class="op">=</span> (</span>
-<span id="cb19-27"><a href="#cb19-27" aria-hidden="true" tabindex="-1"></a>    pl.from_pandas(df_sfgoe)</span>
-<span id="cb19-28"><a href="#cb19-28" aria-hidden="true" tabindex="-1"></a>    .group_by([<span class="st">"player_id"</span>, <span class="st">"player_name"</span>, <span class="st">"draw"</span>, <span class="st">"chain"</span>])</span>
-<span id="cb19-29"><a href="#cb19-29" aria-hidden="true" tabindex="-1"></a>    .agg(pl.col(<span class="st">"fgoe"</span>).<span class="bu">sum</span>())</span>
-<span id="cb19-30"><a href="#cb19-30" aria-hidden="true" tabindex="-1"></a>)</span>
-<span id="cb19-31"><a href="#cb19-31" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb19-32"><a href="#cb19-32" aria-hidden="true" tabindex="-1"></a>df_output.group_by([<span class="st">"player_name"</span>, <span class="st">"player_id"</span>]).agg(</span>
-<span id="cb19-33"><a href="#cb19-33" aria-hidden="true" tabindex="-1"></a>    fgoe_mean<span class="op">=</span>pl.col(<span class="st">"fgoe"</span>).mean(), simulations<span class="op">=</span>pl.<span class="bu">len</span>()</span>
-<span id="cb19-34"><a href="#cb19-34" aria-hidden="true" tabindex="-1"></a>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
-<div class="cell-output cell-output-display" data-execution_count="15">
+<div class="cell" data-execution_count="17">
+<div class="sourceCode cell-code" id="cb21"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb21-1"><a href="#cb21-1" aria-hidden="true" tabindex="-1"></a>df_grid_18 <span class="op">=</span> create_grid(df_model_pd)</span>
+<span id="cb21-2"><a href="#cb21-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb21-3"><a href="#cb21-3" aria-hidden="true" tabindex="-1"></a><span class="co"># Get posterior predictions without group effects</span></span>
+<span id="cb21-4"><a href="#cb21-4" aria-hidden="true" tabindex="-1"></a>avg_preds <span class="op">=</span> model.predict(</span>
+<span id="cb21-5"><a href="#cb21-5" aria-hidden="true" tabindex="-1"></a>    idata, data<span class="op">=</span>df_grid_18, inplace<span class="op">=</span><span class="va">False</span>, include_group_specific<span class="op">=</span><span class="va">False</span></span>
+<span id="cb21-6"><a href="#cb21-6" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb21-7"><a href="#cb21-7" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb21-8"><a href="#cb21-8" aria-hidden="true" tabindex="-1"></a><span class="co"># posterior predictions on grid</span></span>
+<span id="cb21-9"><a href="#cb21-9" aria-hidden="true" tabindex="-1"></a>preds <span class="op">=</span> model.predict(idata, data<span class="op">=</span>df_grid_18, inplace<span class="op">=</span><span class="va">False</span>)</span>
+<span id="cb21-10"><a href="#cb21-10" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb21-11"><a href="#cb21-11" aria-hidden="true" tabindex="-1"></a>df_pred <span class="op">=</span> preds.posterior[<span class="st">"p"</span>].to_dataframe().reset_index()</span>
+<span id="cb21-12"><a href="#cb21-12" aria-hidden="true" tabindex="-1"></a>df_avg_pred <span class="op">=</span> avg_preds[<span class="st">"posterior"</span>][<span class="st">"p"</span>].to_dataframe().reset_index()</span>
+<span id="cb21-13"><a href="#cb21-13" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb21-14"><a href="#cb21-14" aria-hidden="true" tabindex="-1"></a><span class="co"># take the predictions form the players and subtract the posterior predictions without group effects. This provides the main source of the metric for simulated FGOE</span></span>
+<span id="cb21-15"><a href="#cb21-15" aria-hidden="true" tabindex="-1"></a>df_sfgoe <span class="op">=</span> (</span>
+<span id="cb21-16"><a href="#cb21-16" aria-hidden="true" tabindex="-1"></a>    df_pred.merge(df_avg_pred, on<span class="op">=</span>[<span class="st">"chain"</span>, <span class="st">"draw"</span>, <span class="st">"__obs__"</span>], how<span class="op">=</span><span class="st">"inner"</span>)</span>
+<span id="cb21-17"><a href="#cb21-17" aria-hidden="true" tabindex="-1"></a>    .merge(</span>
+<span id="cb21-18"><a href="#cb21-18" aria-hidden="true" tabindex="-1"></a>        df_grid_18[[<span class="st">"player_id"</span>, <span class="st">"player_name"</span>, <span class="st">"distance"</span>, <span class="st">"__obs__"</span>]],</span>
+<span id="cb21-19"><a href="#cb21-19" aria-hidden="true" tabindex="-1"></a>        on<span class="op">=</span>[<span class="st">"__obs__"</span>],</span>
+<span id="cb21-20"><a href="#cb21-20" aria-hidden="true" tabindex="-1"></a>        how<span class="op">=</span><span class="st">"left"</span>,</span>
+<span id="cb21-21"><a href="#cb21-21" aria-hidden="true" tabindex="-1"></a>    )</span>
+<span id="cb21-22"><a href="#cb21-22" aria-hidden="true" tabindex="-1"></a>    .assign(fgoe<span class="op">=</span><span class="kw">lambda</span> x: x[<span class="st">"p_x"</span>] <span class="op">-</span> x[<span class="st">"p_y"</span>])  <span class="co"># players expectation - avg</span></span>
+<span id="cb21-23"><a href="#cb21-23" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb21-24"><a href="#cb21-24" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb21-25"><a href="#cb21-25" aria-hidden="true" tabindex="-1"></a><span class="co"># polars for efficient aggregation</span></span>
+<span id="cb21-26"><a href="#cb21-26" aria-hidden="true" tabindex="-1"></a>df_output <span class="op">=</span> (</span>
+<span id="cb21-27"><a href="#cb21-27" aria-hidden="true" tabindex="-1"></a>    pl.from_pandas(df_sfgoe)</span>
+<span id="cb21-28"><a href="#cb21-28" aria-hidden="true" tabindex="-1"></a>    .group_by([<span class="st">"player_id"</span>, <span class="st">"player_name"</span>, <span class="st">"draw"</span>, <span class="st">"chain"</span>])</span>
+<span id="cb21-29"><a href="#cb21-29" aria-hidden="true" tabindex="-1"></a>    .agg(pl.col(<span class="st">"fgoe"</span>).<span class="bu">sum</span>())</span>
+<span id="cb21-30"><a href="#cb21-30" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb21-31"><a href="#cb21-31" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb21-32"><a href="#cb21-32" aria-hidden="true" tabindex="-1"></a>df_output.group_by([<span class="st">"player_name"</span>, <span class="st">"player_id"</span>]).agg(</span>
+<span id="cb21-33"><a href="#cb21-33" aria-hidden="true" tabindex="-1"></a>    fgoe_mean<span class="op">=</span>pl.col(<span class="st">"fgoe"</span>).mean(), simulations<span class="op">=</span>pl.<span class="bu">len</span>()</span>
+<span id="cb21-34"><a href="#cb21-34" aria-hidden="true" tabindex="-1"></a>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="17">
 <div><style>
 .dataframe > thead > tr,
 .dataframe > tbody > tr {
@@ -1026,69 +1094,69 @@ Sampling 4 chains for 1_000 tune and 1_000 draw iterations (4_000 + 4_000 draws 
 </thead>
 <tbody>
 <tr class="odd">
+<td>"ROSS MARTIN"</td>
+<td>"43815"</td>
+<td>-0.385742</td>
+<td>4000</td>
+</tr>
+<tr class="even">
+<td>"PHIL DAWSON"</td>
+<td>"23860"</td>
+<td>0.493123</td>
+<td>4000</td>
+</tr>
+<tr class="odd">
+<td>"STEVEN HAUSCHKA"</td>
+<td>"33469"</td>
+<td>1.87498</td>
+<td>4000</td>
+</tr>
+<tr class="even">
+<td>"RYAN SUCCOP"</td>
+<td>"34707"</td>
+<td>-0.043132</td>
+<td>4000</td>
+</tr>
+<tr class="odd">
 <td>"NICK ROSE"</td>
 <td>"43704"</td>
 <td>-1.165506</td>
 <td>4000</td>
 </tr>
 <tr class="even">
+<td>…</td>
+<td>…</td>
+<td>…</td>
+<td>…</td>
+</tr>
+<tr class="odd">
 <td>"CHANDLER CATANZARO"</td>
 <td>"41736"</td>
 <td>-0.032888</td>
 <td>4000</td>
 </tr>
+<tr class="even">
+<td>"GREG JOSEPH"</td>
+<td>"46634"</td>
+<td>0.250833</td>
+<td>4000</td>
+</tr>
 <tr class="odd">
-<td>"CAIRO SANTOS"</td>
-<td>"41991"</td>
-<td>0.393387</td>
+<td>"MATT PRATER"</td>
+<td>"31446"</td>
+<td>1.070614</td>
 <td>4000</td>
 </tr>
 <tr class="even">
-<td>"SEBASTIAN JANIKOWSKI"</td>
-<td>"25326"</td>
-<td>0.947021</td>
+<td>"DAN BAILEY"</td>
+<td>"38134"</td>
+<td>1.372129</td>
 <td>4000</td>
 </tr>
 <tr class="odd">
-<td>"ALDRICK ROSAS"</td>
-<td>"43937"</td>
-<td>0.054861</td>
-<td>4000</td>
-</tr>
-<tr class="even">
-<td>…</td>
-<td>…</td>
-<td>…</td>
-<td>…</td>
-</tr>
-<tr class="odd">
-<td>"PHIL DAWSON"</td>
-<td>"23860"</td>
-<td>0.493123</td>
-<td>4000</td>
-</tr>
-<tr class="even">
-<td>"MARSHALL KOEHN"</td>
-<td>"43736"</td>
-<td>0.08794</td>
-<td>4000</td>
-</tr>
-<tr class="odd">
-<td>"CHRIS BOSWELL"</td>
-<td>"41953"</td>
-<td>1.382124</td>
-<td>4000</td>
-</tr>
-<tr class="even">
-<td>"BRETT MAHER"</td>
-<td>"40775"</td>
-<td>0.657678</td>
-<td>4000</td>
-</tr>
-<tr class="odd">
-<td>"TYLER DAVIS"</td>
-<td>"46691"</td>
-<td>-0.295828</td>
+<td>"KAI FORBATH"</td>
+<td>"38220"</td>
+<td>0.623663</td>
 <td>4000</td>
 </tr>
 </tbody>
@@ -1102,13 +1170,13 @@ Sampling 4 chains for 1_000 tune and 1_000 draw iterations (4_000 + 4_000 draws 
 <h4 class="anchored" data-anchor-id="plotting-simulated-fgoe">Plotting Simulated FGOE</h4>
 <p>The plot below shows the posterior distributions of simulated FGOE. Compared to the traditional version, this metric is more stable and less noisy, and it follows intuitive principles that make interpretation easier. Many players cluster around zero, roughly representing replacement level, while deviations in either direction are easy to interpret.</p>
 <p>For example, Justin Tucker’s median rating falls between 1 and 4 field goals over expected, with a central estimate of approximately 2.5. That’s far more intuitive and communicable than saying <em>the player’s log-odds intercept increases by 0.2 to 0.8 after adjusting for distance</em>.</p>
-<div class="cell" data-execution_count="16">
+<div class="cell" data-execution_count="18">
 <details>
 <summary>Code</summary>
-<div class="sourceCode cell-code" id="cb20"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb20-1"><a href="#cb20-1" aria-hidden="true" tabindex="-1"></a>ggpointinterval(df_output, title<span class="op">=</span><span class="st">'Simulated FGOE Distributions - 2018'</span>, axis_label<span class="op">=</span><span class="st">'Simulated FGOE'</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode cell-code" id="cb22"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb22-1"><a href="#cb22-1" aria-hidden="true" tabindex="-1"></a>ggpointinterval(df_output, title<span class="op">=</span><span class="st">'Simulated FGOE Distributions - 2018'</span>, axis_label<span class="op">=</span><span class="st">'Simulated FGOE'</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 </details>
 <div class="cell-output cell-output-display">
-<p><img src="kicker_model_files/figure-html/cell-17-output-1.png" class="img-fluid"></p>
+<p><img src="kicker_model_files/figure-html/cell-19-output-1.png" class="img-fluid"></p>
 </div>
 </div>
 </section>
@@ -1128,118 +1196,118 @@ Note
 <p>The models aren’t necesarily 1:1 comparisons of the same distribution of kicks, because with the traditional FGOE we are limited to the kicks that the kicker attempted. Simulated FGOE is applied to the same set of kicks for each kicker. It is more important to look directionally at each model. Easily shown is Justin Tucker is firmly at the top of the list, without having to adjust arbitrarily for blocked kicks.</p>
 </div>
 </div>
-<div class="cell" data-execution_count="17">
+<div class="cell" data-execution_count="19">
 <details>
 <summary>Code</summary>
-<div class="sourceCode cell-code" id="cb21"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb21-1"><a href="#cb21-1" aria-hidden="true" tabindex="-1"></a>df_comparison <span class="op">=</span> pl.concat(</span>
-<span id="cb21-2"><a href="#cb21-2" aria-hidden="true" tabindex="-1"></a>    [</span>
-<span id="cb21-3"><a href="#cb21-3" aria-hidden="true" tabindex="-1"></a>        df_output.with_columns(model<span class="op">=</span>pl.lit(<span class="st">"Simulated"</span>)),</span>
-<span id="cb21-4"><a href="#cb21-4" aria-hidden="true" tabindex="-1"></a>        pl.from_pandas(df_fgoe)</span>
-<span id="cb21-5"><a href="#cb21-5" aria-hidden="true" tabindex="-1"></a>        .with_columns(model<span class="op">=</span>pl.lit(<span class="st">"Traditional"</span>))</span>
-<span id="cb21-6"><a href="#cb21-6" aria-hidden="true" tabindex="-1"></a>        .select([<span class="st">"player_id"</span>, <span class="st">"player_name"</span>, <span class="st">"draw"</span>, <span class="st">"chain"</span>, <span class="st">"fgoe"</span>, <span class="st">"model"</span>]),</span>
-<span id="cb21-7"><a href="#cb21-7" aria-hidden="true" tabindex="-1"></a>    ]</span>
-<span id="cb21-8"><a href="#cb21-8" aria-hidden="true" tabindex="-1"></a>)</span>
-<span id="cb21-9"><a href="#cb21-9" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb21-10"><a href="#cb21-10" aria-hidden="true" tabindex="-1"></a>df_comparison_r <span class="op">=</span> pointrange_data(</span>
-<span id="cb21-11"><a href="#cb21-11" aria-hidden="true" tabindex="-1"></a>    df_comparison, group<span class="op">=</span>[<span class="st">"player_id"</span>, <span class="st">"player_name"</span>, <span class="st">"model"</span>]</span>
-<span id="cb21-12"><a href="#cb21-12" aria-hidden="true" tabindex="-1"></a>).join(</span>
-<span id="cb21-13"><a href="#cb21-13" aria-hidden="true" tabindex="-1"></a>    df_output.group_by([<span class="st">"player_name"</span>, <span class="st">"player_id"</span>]).agg(</span>
-<span id="cb21-14"><a href="#cb21-14" aria-hidden="true" tabindex="-1"></a>        plot_sort<span class="op">=</span>pl.col(<span class="st">"fgoe"</span>).mean(), simulations<span class="op">=</span>pl.<span class="bu">len</span>()</span>
-<span id="cb21-15"><a href="#cb21-15" aria-hidden="true" tabindex="-1"></a>    ),</span>
-<span id="cb21-16"><a href="#cb21-16" aria-hidden="true" tabindex="-1"></a>    on<span class="op">=</span>[<span class="st">"player_id"</span>, <span class="st">"player_name"</span>],</span>
-<span id="cb21-17"><a href="#cb21-17" aria-hidden="true" tabindex="-1"></a>)</span>
-<span id="cb21-18"><a href="#cb21-18" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb21-19"><a href="#cb21-19" aria-hidden="true" tabindex="-1"></a>df_comparison_r <span class="op">=</span> title_name(df_comparison_r)</span>
-<span id="cb21-20"><a href="#cb21-20" aria-hidden="true" tabindex="-1"></a>(</span>
-<span id="cb21-21"><a href="#cb21-21" aria-hidden="true" tabindex="-1"></a>    ggplot(</span>
-<span id="cb21-22"><a href="#cb21-22" aria-hidden="true" tabindex="-1"></a>        df_comparison_r, aes(<span class="st">"reorder(player_name, plot_sort)"</span>, <span class="st">"fgoe"</span>, color<span class="op">=</span><span class="st">"model"</span>)</span>
-<span id="cb21-23"><a href="#cb21-23" aria-hidden="true" tabindex="-1"></a>    )</span>
-<span id="cb21-24"><a href="#cb21-24" aria-hidden="true" tabindex="-1"></a>    <span class="op">+</span> geom_linerange(</span>
-<span id="cb21-25"><a href="#cb21-25" aria-hidden="true" tabindex="-1"></a>        aes(ymin<span class="op">=</span><span class="st">"hdi_lower"</span>, ymax<span class="op">=</span><span class="st">"hdi_upper"</span>), size<span class="op">=</span><span class="fl">1.2</span>, position<span class="op">=</span>position_dodge(<span class="fl">0.5</span>)</span>
-<span id="cb21-26"><a href="#cb21-26" aria-hidden="true" tabindex="-1"></a>    )</span>
-<span id="cb21-27"><a href="#cb21-27" aria-hidden="true" tabindex="-1"></a>    <span class="op">+</span> geom_pointrange(</span>
-<span id="cb21-28"><a href="#cb21-28" aria-hidden="true" tabindex="-1"></a>        aes(ymin<span class="op">=</span><span class="st">"ymin"</span>, ymax<span class="op">=</span><span class="st">"ymax"</span>),</span>
-<span id="cb21-29"><a href="#cb21-29" aria-hidden="true" tabindex="-1"></a>        shape<span class="op">=</span><span class="st">"o"</span>,</span>
-<span id="cb21-30"><a href="#cb21-30" aria-hidden="true" tabindex="-1"></a>        fill<span class="op">=</span><span class="st">"white"</span>,</span>
-<span id="cb21-31"><a href="#cb21-31" aria-hidden="true" tabindex="-1"></a>        position<span class="op">=</span>position_dodge(<span class="fl">0.75</span>),</span>
-<span id="cb21-32"><a href="#cb21-32" aria-hidden="true" tabindex="-1"></a>    )</span>
-<span id="cb21-33"><a href="#cb21-33" aria-hidden="true" tabindex="-1"></a>    <span class="op">+</span> coord_flip()</span>
-<span id="cb21-34"><a href="#cb21-34" aria-hidden="true" tabindex="-1"></a>    <span class="op">+</span> labs(</span>
-<span id="cb21-35"><a href="#cb21-35" aria-hidden="true" tabindex="-1"></a>        y<span class="op">=</span><span class="st">"Simulated FGOE"</span>,</span>
-<span id="cb21-36"><a href="#cb21-36" aria-hidden="true" tabindex="-1"></a>    )</span>
-<span id="cb21-37"><a href="#cb21-37" aria-hidden="true" tabindex="-1"></a>    <span class="op">+</span> theme_minimal()</span>
-<span id="cb21-38"><a href="#cb21-38" aria-hidden="true" tabindex="-1"></a>    <span class="op">+</span> theme(</span>
-<span id="cb21-39"><a href="#cb21-39" aria-hidden="true" tabindex="-1"></a>        legend_position<span class="op">=</span><span class="st">"top"</span>,</span>
-<span id="cb21-40"><a href="#cb21-40" aria-hidden="true" tabindex="-1"></a>        axis_title_y<span class="op">=</span>element_blank(),</span>
-<span id="cb21-41"><a href="#cb21-41" aria-hidden="true" tabindex="-1"></a>        figure_size<span class="op">=</span>(<span class="dv">6</span>, <span class="dv">8</span>),</span>
-<span id="cb21-42"><a href="#cb21-42" aria-hidden="true" tabindex="-1"></a>        dpi<span class="op">=</span><span class="dv">100</span>,</span>
-<span id="cb21-43"><a href="#cb21-43" aria-hidden="true" tabindex="-1"></a>        panel_grid_minor<span class="op">=</span>element_blank(),</span>
-<span id="cb21-44"><a href="#cb21-44" aria-hidden="true" tabindex="-1"></a>        panel_grid_major_y<span class="op">=</span>element_blank(),</span>
-<span id="cb21-45"><a href="#cb21-45" aria-hidden="true" tabindex="-1"></a>        axis_text_y<span class="op">=</span>element_text(size<span class="op">=</span><span class="dv">8</span>),</span>
-<span id="cb21-46"><a href="#cb21-46" aria-hidden="true" tabindex="-1"></a>    )</span>
-<span id="cb21-47"><a href="#cb21-47" aria-hidden="true" tabindex="-1"></a>    <span class="op">+</span> geom_hline(yintercept<span class="op">=</span><span class="dv">0</span>, linetype<span class="op">=</span><span class="st">"dashed"</span>)</span>
-<span id="cb21-48"><a href="#cb21-48" aria-hidden="true" tabindex="-1"></a>    <span class="op">+</span> labs(</span>
-<span id="cb21-49"><a href="#cb21-49" aria-hidden="true" tabindex="-1"></a>        title<span class="op">=</span><span class="st">"Simulated vs Traditional FGOE"</span>,</span>
-<span id="cb21-50"><a href="#cb21-50" aria-hidden="true" tabindex="-1"></a>        y<span class="op">=</span><span class="st">"Simulated FGOE"</span>,</span>
-<span id="cb21-51"><a href="#cb21-51" aria-hidden="true" tabindex="-1"></a>        color<span class="op">=</span><span class="st">"Model:"</span>,</span>
-<span id="cb21-52"><a href="#cb21-52" aria-hidden="true" tabindex="-1"></a>    )</span>
-<span id="cb21-53"><a href="#cb21-53" aria-hidden="true" tabindex="-1"></a>    <span class="op">+</span> scale_color_manual((<span class="st">"#001e42"</span>, <span class="st">"#ff4b00"</span>))</span>
-<span id="cb21-54"><a href="#cb21-54" aria-hidden="true" tabindex="-1"></a>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode cell-code" id="cb23"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb23-1"><a href="#cb23-1" aria-hidden="true" tabindex="-1"></a>df_comparison <span class="op">=</span> pl.concat(</span>
+<span id="cb23-2"><a href="#cb23-2" aria-hidden="true" tabindex="-1"></a>    [</span>
+<span id="cb23-3"><a href="#cb23-3" aria-hidden="true" tabindex="-1"></a>        df_output.with_columns(model<span class="op">=</span>pl.lit(<span class="st">"Simulated"</span>)),</span>
+<span id="cb23-4"><a href="#cb23-4" aria-hidden="true" tabindex="-1"></a>        pl.from_pandas(df_fgoe)</span>
+<span id="cb23-5"><a href="#cb23-5" aria-hidden="true" tabindex="-1"></a>        .with_columns(model<span class="op">=</span>pl.lit(<span class="st">"Traditional"</span>))</span>
+<span id="cb23-6"><a href="#cb23-6" aria-hidden="true" tabindex="-1"></a>        .select([<span class="st">"player_id"</span>, <span class="st">"player_name"</span>, <span class="st">"draw"</span>, <span class="st">"chain"</span>, <span class="st">"fgoe"</span>, <span class="st">"model"</span>]),</span>
+<span id="cb23-7"><a href="#cb23-7" aria-hidden="true" tabindex="-1"></a>    ]</span>
+<span id="cb23-8"><a href="#cb23-8" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb23-9"><a href="#cb23-9" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb23-10"><a href="#cb23-10" aria-hidden="true" tabindex="-1"></a>df_comparison_r <span class="op">=</span> pointrange_data(</span>
+<span id="cb23-11"><a href="#cb23-11" aria-hidden="true" tabindex="-1"></a>    df_comparison, group<span class="op">=</span>[<span class="st">"player_id"</span>, <span class="st">"player_name"</span>, <span class="st">"model"</span>]</span>
+<span id="cb23-12"><a href="#cb23-12" aria-hidden="true" tabindex="-1"></a>).join(</span>
+<span id="cb23-13"><a href="#cb23-13" aria-hidden="true" tabindex="-1"></a>    df_output.group_by([<span class="st">"player_name"</span>, <span class="st">"player_id"</span>]).agg(</span>
+<span id="cb23-14"><a href="#cb23-14" aria-hidden="true" tabindex="-1"></a>        plot_sort<span class="op">=</span>pl.col(<span class="st">"fgoe"</span>).mean(), simulations<span class="op">=</span>pl.<span class="bu">len</span>()</span>
+<span id="cb23-15"><a href="#cb23-15" aria-hidden="true" tabindex="-1"></a>    ),</span>
+<span id="cb23-16"><a href="#cb23-16" aria-hidden="true" tabindex="-1"></a>    on<span class="op">=</span>[<span class="st">"player_id"</span>, <span class="st">"player_name"</span>],</span>
+<span id="cb23-17"><a href="#cb23-17" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb23-18"><a href="#cb23-18" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb23-19"><a href="#cb23-19" aria-hidden="true" tabindex="-1"></a>df_comparison_r <span class="op">=</span> title_name(df_comparison_r)</span>
+<span id="cb23-20"><a href="#cb23-20" aria-hidden="true" tabindex="-1"></a>(</span>
+<span id="cb23-21"><a href="#cb23-21" aria-hidden="true" tabindex="-1"></a>    ggplot(</span>
+<span id="cb23-22"><a href="#cb23-22" aria-hidden="true" tabindex="-1"></a>        df_comparison_r, aes(<span class="st">"reorder(player_name, plot_sort)"</span>, <span class="st">"fgoe"</span>, color<span class="op">=</span><span class="st">"model"</span>)</span>
+<span id="cb23-23"><a href="#cb23-23" aria-hidden="true" tabindex="-1"></a>    )</span>
+<span id="cb23-24"><a href="#cb23-24" aria-hidden="true" tabindex="-1"></a>    <span class="op">+</span> geom_linerange(</span>
+<span id="cb23-25"><a href="#cb23-25" aria-hidden="true" tabindex="-1"></a>        aes(ymin<span class="op">=</span><span class="st">"hdi_lower"</span>, ymax<span class="op">=</span><span class="st">"hdi_upper"</span>), size<span class="op">=</span><span class="fl">1.2</span>, position<span class="op">=</span>position_dodge(<span class="fl">0.5</span>)</span>
+<span id="cb23-26"><a href="#cb23-26" aria-hidden="true" tabindex="-1"></a>    )</span>
+<span id="cb23-27"><a href="#cb23-27" aria-hidden="true" tabindex="-1"></a>    <span class="op">+</span> geom_pointrange(</span>
+<span id="cb23-28"><a href="#cb23-28" aria-hidden="true" tabindex="-1"></a>        aes(ymin<span class="op">=</span><span class="st">"ymin"</span>, ymax<span class="op">=</span><span class="st">"ymax"</span>),</span>
+<span id="cb23-29"><a href="#cb23-29" aria-hidden="true" tabindex="-1"></a>        shape<span class="op">=</span><span class="st">"o"</span>,</span>
+<span id="cb23-30"><a href="#cb23-30" aria-hidden="true" tabindex="-1"></a>        fill<span class="op">=</span><span class="st">"white"</span>,</span>
+<span id="cb23-31"><a href="#cb23-31" aria-hidden="true" tabindex="-1"></a>        position<span class="op">=</span>position_dodge(<span class="fl">0.75</span>),</span>
+<span id="cb23-32"><a href="#cb23-32" aria-hidden="true" tabindex="-1"></a>    )</span>
+<span id="cb23-33"><a href="#cb23-33" aria-hidden="true" tabindex="-1"></a>    <span class="op">+</span> coord_flip()</span>
+<span id="cb23-34"><a href="#cb23-34" aria-hidden="true" tabindex="-1"></a>    <span class="op">+</span> labs(</span>
+<span id="cb23-35"><a href="#cb23-35" aria-hidden="true" tabindex="-1"></a>        y<span class="op">=</span><span class="st">"Simulated FGOE"</span>,</span>
+<span id="cb23-36"><a href="#cb23-36" aria-hidden="true" tabindex="-1"></a>    )</span>
+<span id="cb23-37"><a href="#cb23-37" aria-hidden="true" tabindex="-1"></a>    <span class="op">+</span> theme_minimal()</span>
+<span id="cb23-38"><a href="#cb23-38" aria-hidden="true" tabindex="-1"></a>    <span class="op">+</span> theme(</span>
+<span id="cb23-39"><a href="#cb23-39" aria-hidden="true" tabindex="-1"></a>        legend_position<span class="op">=</span><span class="st">"top"</span>,</span>
+<span id="cb23-40"><a href="#cb23-40" aria-hidden="true" tabindex="-1"></a>        axis_title_y<span class="op">=</span>element_blank(),</span>
+<span id="cb23-41"><a href="#cb23-41" aria-hidden="true" tabindex="-1"></a>        figure_size<span class="op">=</span>(<span class="dv">6</span>, <span class="dv">8</span>),</span>
+<span id="cb23-42"><a href="#cb23-42" aria-hidden="true" tabindex="-1"></a>        dpi<span class="op">=</span><span class="dv">100</span>,</span>
+<span id="cb23-43"><a href="#cb23-43" aria-hidden="true" tabindex="-1"></a>        panel_grid_minor<span class="op">=</span>element_blank(),</span>
+<span id="cb23-44"><a href="#cb23-44" aria-hidden="true" tabindex="-1"></a>        panel_grid_major_y<span class="op">=</span>element_blank(),</span>
+<span id="cb23-45"><a href="#cb23-45" aria-hidden="true" tabindex="-1"></a>        axis_text_y<span class="op">=</span>element_text(size<span class="op">=</span><span class="dv">8</span>),</span>
+<span id="cb23-46"><a href="#cb23-46" aria-hidden="true" tabindex="-1"></a>    )</span>
+<span id="cb23-47"><a href="#cb23-47" aria-hidden="true" tabindex="-1"></a>    <span class="op">+</span> geom_hline(yintercept<span class="op">=</span><span class="dv">0</span>, linetype<span class="op">=</span><span class="st">"dashed"</span>)</span>
+<span id="cb23-48"><a href="#cb23-48" aria-hidden="true" tabindex="-1"></a>    <span class="op">+</span> labs(</span>
+<span id="cb23-49"><a href="#cb23-49" aria-hidden="true" tabindex="-1"></a>        title<span class="op">=</span><span class="st">"Simulated vs Traditional FGOE"</span>,</span>
+<span id="cb23-50"><a href="#cb23-50" aria-hidden="true" tabindex="-1"></a>        y<span class="op">=</span><span class="st">"Simulated FGOE"</span>,</span>
+<span id="cb23-51"><a href="#cb23-51" aria-hidden="true" tabindex="-1"></a>        color<span class="op">=</span><span class="st">"Model:"</span>,</span>
+<span id="cb23-52"><a href="#cb23-52" aria-hidden="true" tabindex="-1"></a>    )</span>
+<span id="cb23-53"><a href="#cb23-53" aria-hidden="true" tabindex="-1"></a>    <span class="op">+</span> scale_color_manual((<span class="st">"#001e42"</span>, <span class="st">"#ff4b00"</span>))</span>
+<span id="cb23-54"><a href="#cb23-54" aria-hidden="true" tabindex="-1"></a>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 </details>
 <div class="cell-output cell-output-display">
-<p><img src="kicker_model_files/figure-html/cell-18-output-1.png" class="img-fluid"></p>
+<p><img src="kicker_model_files/figure-html/cell-20-output-1.png" class="img-fluid"></p>
 </div>
 </div>
 </section>
 <section id="which-player-would-we-prefer" class="level4">
 <h4 class="anchored" data-anchor-id="which-player-would-we-prefer">Which player would we prefer?</h4>
 <p>With the model parameters and simulation, even if a kicker hasn’t attempted a 60 yard kick - we can provide an estimate for what that might look like. Probability curves by distance can help visualize comparisons between players.</p>
-<div class="cell" data-execution_count="18">
+<div class="cell" data-execution_count="20">
 <details>
 <summary>Code</summary>
-<div class="sourceCode cell-code" id="cb22"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb22-1"><a href="#cb22-1" aria-hidden="true" tabindex="-1"></a>plot_df <span class="op">=</span> pl.from_pandas(</span>
-<span id="cb22-2"><a href="#cb22-2" aria-hidden="true" tabindex="-1"></a>    df_sfgoe[df_sfgoe[<span class="st">"player_name"</span>].isin([<span class="st">"JUSTIN TUCKER"</span>, <span class="st">"ZANE GONZALEZ"</span>])].assign(</span>
-<span id="cb22-3"><a href="#cb22-3" aria-hidden="true" tabindex="-1"></a>        player_name<span class="op">=</span><span class="kw">lambda</span> x: x[<span class="st">"player_name"</span>].astype(<span class="bu">str</span>)</span>
-<span id="cb22-4"><a href="#cb22-4" aria-hidden="true" tabindex="-1"></a>    )</span>
-<span id="cb22-5"><a href="#cb22-5" aria-hidden="true" tabindex="-1"></a>)</span>
-<span id="cb22-6"><a href="#cb22-6" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb22-7"><a href="#cb22-7" aria-hidden="true" tabindex="-1"></a>(</span>
-<span id="cb22-8"><a href="#cb22-8" aria-hidden="true" tabindex="-1"></a>    ggplot(aes(<span class="st">"distance"</span>, <span class="st">"p_x"</span>, color<span class="op">=</span><span class="st">"player_name"</span>))</span>
-<span id="cb22-9"><a href="#cb22-9" aria-hidden="true" tabindex="-1"></a>    <span class="op">+</span> geom_ribbon(</span>
-<span id="cb22-10"><a href="#cb22-10" aria-hidden="true" tabindex="-1"></a>        aes(y<span class="op">=</span><span class="st">"fgoe"</span>, ymin<span class="op">=</span><span class="st">"ymin"</span>, ymax<span class="op">=</span><span class="st">"ymax"</span>, fill<span class="op">=</span><span class="st">"player_name"</span>),</span>
-<span id="cb22-11"><a href="#cb22-11" aria-hidden="true" tabindex="-1"></a>        data<span class="op">=</span>pointrange_data(plot_df, field<span class="op">=</span><span class="st">"p_x"</span>, group<span class="op">=</span>[<span class="st">"player_name"</span>, <span class="st">"distance"</span>]),</span>
-<span id="cb22-12"><a href="#cb22-12" aria-hidden="true" tabindex="-1"></a>        alpha<span class="op">=</span><span class="fl">0.2</span>,</span>
-<span id="cb22-13"><a href="#cb22-13" aria-hidden="true" tabindex="-1"></a>        outline_type<span class="op">=</span>element_blank(),</span>
-<span id="cb22-14"><a href="#cb22-14" aria-hidden="true" tabindex="-1"></a>        show_legend<span class="op">=</span>{<span class="st">"color"</span>: <span class="va">False</span>},</span>
-<span id="cb22-15"><a href="#cb22-15" aria-hidden="true" tabindex="-1"></a>    )</span>
-<span id="cb22-16"><a href="#cb22-16" aria-hidden="true" tabindex="-1"></a>    <span class="op">+</span> geom_ribbon(</span>
-<span id="cb22-17"><a href="#cb22-17" aria-hidden="true" tabindex="-1"></a>        aes(y<span class="op">=</span><span class="st">"fgoe"</span>, ymin<span class="op">=</span><span class="st">"hdi_lower"</span>, ymax<span class="op">=</span><span class="st">"hdi_upper"</span>, fill<span class="op">=</span><span class="st">"player_name"</span>),</span>
-<span id="cb22-18"><a href="#cb22-18" aria-hidden="true" tabindex="-1"></a>        <span class="co"># fill="#00000053",</span></span>
-<span id="cb22-19"><a href="#cb22-19" aria-hidden="true" tabindex="-1"></a>        data<span class="op">=</span>pointrange_data(plot_df, field<span class="op">=</span><span class="st">"p_x"</span>, group<span class="op">=</span>[<span class="st">"player_name"</span>, <span class="st">"distance"</span>]),</span>
-<span id="cb22-20"><a href="#cb22-20" aria-hidden="true" tabindex="-1"></a>        alpha<span class="op">=</span><span class="fl">0.4</span>,</span>
-<span id="cb22-21"><a href="#cb22-21" aria-hidden="true" tabindex="-1"></a>        outline_type<span class="op">=</span>element_blank(),</span>
-<span id="cb22-22"><a href="#cb22-22" aria-hidden="true" tabindex="-1"></a>        show_legend<span class="op">=</span>{<span class="st">"color"</span>: <span class="va">False</span>},</span>
-<span id="cb22-23"><a href="#cb22-23" aria-hidden="true" tabindex="-1"></a>    )</span>
-<span id="cb22-24"><a href="#cb22-24" aria-hidden="true" tabindex="-1"></a>    <span class="op">+</span> geom_line(</span>
-<span id="cb22-25"><a href="#cb22-25" aria-hidden="true" tabindex="-1"></a>        data<span class="op">=</span>plot_df.group_by([<span class="st">"player_name"</span>, <span class="st">"distance"</span>]).agg(pl.col(<span class="st">"p_x"</span>).mean()),</span>
-<span id="cb22-26"><a href="#cb22-26" aria-hidden="true" tabindex="-1"></a>        size<span class="op">=</span><span class="fl">1.5</span>,</span>
-<span id="cb22-27"><a href="#cb22-27" aria-hidden="true" tabindex="-1"></a>        show_legend<span class="op">=</span><span class="va">False</span></span>
-<span id="cb22-28"><a href="#cb22-28" aria-hidden="true" tabindex="-1"></a>    )</span>
-<span id="cb22-29"><a href="#cb22-29" aria-hidden="true" tabindex="-1"></a>    <span class="op">+</span> theme_minimal()</span>
-<span id="cb22-30"><a href="#cb22-30" aria-hidden="true" tabindex="-1"></a>    <span class="op">+</span> theme(legend_position<span class="op">=</span><span class="st">"top"</span>, panel_grid_minor<span class="op">=</span>element_blank())</span>
-<span id="cb22-31"><a href="#cb22-31" aria-hidden="true" tabindex="-1"></a>    <span class="op">+</span> labs(</span>
-<span id="cb22-32"><a href="#cb22-32" aria-hidden="true" tabindex="-1"></a>        title<span class="op">=</span><span class="st">"Modeled Probability by Distance"</span>,</span>
-<span id="cb22-33"><a href="#cb22-33" aria-hidden="true" tabindex="-1"></a>        y<span class="op">=</span><span class="st">"P(Make)"</span>,</span>
-<span id="cb22-34"><a href="#cb22-34" aria-hidden="true" tabindex="-1"></a>        x<span class="op">=</span><span class="st">"Distance"</span>,</span>
-<span id="cb22-35"><a href="#cb22-35" aria-hidden="true" tabindex="-1"></a>        fill<span class="op">=</span><span class="st">"Player:"</span>,</span>
-<span id="cb22-36"><a href="#cb22-36" aria-hidden="true" tabindex="-1"></a>    )</span>
-<span id="cb22-37"><a href="#cb22-37" aria-hidden="true" tabindex="-1"></a>    <span class="op">+</span> scale_x_continuous(limits<span class="op">=</span>(<span class="dv">25</span>, <span class="dv">60</span>))</span>
-<span id="cb22-38"><a href="#cb22-38" aria-hidden="true" tabindex="-1"></a>    <span class="op">+</span> scale_color_manual(values<span class="op">=</span>(palette[<span class="op">-</span><span class="dv">1</span>], palette[<span class="dv">0</span>]))</span>
-<span id="cb22-39"><a href="#cb22-39" aria-hidden="true" tabindex="-1"></a>    <span class="op">+</span> scale_fill_manual(values<span class="op">=</span>(palette[<span class="op">-</span><span class="dv">1</span>], palette[<span class="dv">0</span>]))</span>
-<span id="cb22-40"><a href="#cb22-40" aria-hidden="true" tabindex="-1"></a>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode cell-code" id="cb24"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb24-1"><a href="#cb24-1" aria-hidden="true" tabindex="-1"></a>plot_df <span class="op">=</span> pl.from_pandas(</span>
+<span id="cb24-2"><a href="#cb24-2" aria-hidden="true" tabindex="-1"></a>    df_sfgoe[df_sfgoe[<span class="st">"player_name"</span>].isin([<span class="st">"JUSTIN TUCKER"</span>, <span class="st">"ZANE GONZALEZ"</span>])].assign(</span>
+<span id="cb24-3"><a href="#cb24-3" aria-hidden="true" tabindex="-1"></a>        player_name<span class="op">=</span><span class="kw">lambda</span> x: x[<span class="st">"player_name"</span>].astype(<span class="bu">str</span>)</span>
+<span id="cb24-4"><a href="#cb24-4" aria-hidden="true" tabindex="-1"></a>    )</span>
+<span id="cb24-5"><a href="#cb24-5" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb24-6"><a href="#cb24-6" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb24-7"><a href="#cb24-7" aria-hidden="true" tabindex="-1"></a>(</span>
+<span id="cb24-8"><a href="#cb24-8" aria-hidden="true" tabindex="-1"></a>    ggplot(aes(<span class="st">"distance"</span>, <span class="st">"p_x"</span>, color<span class="op">=</span><span class="st">"player_name"</span>))</span>
+<span id="cb24-9"><a href="#cb24-9" aria-hidden="true" tabindex="-1"></a>    <span class="op">+</span> geom_ribbon(</span>
+<span id="cb24-10"><a href="#cb24-10" aria-hidden="true" tabindex="-1"></a>        aes(y<span class="op">=</span><span class="st">"fgoe"</span>, ymin<span class="op">=</span><span class="st">"ymin"</span>, ymax<span class="op">=</span><span class="st">"ymax"</span>, fill<span class="op">=</span><span class="st">"player_name"</span>),</span>
+<span id="cb24-11"><a href="#cb24-11" aria-hidden="true" tabindex="-1"></a>        data<span class="op">=</span>pointrange_data(plot_df, field<span class="op">=</span><span class="st">"p_x"</span>, group<span class="op">=</span>[<span class="st">"player_name"</span>, <span class="st">"distance"</span>]),</span>
+<span id="cb24-12"><a href="#cb24-12" aria-hidden="true" tabindex="-1"></a>        alpha<span class="op">=</span><span class="fl">0.2</span>,</span>
+<span id="cb24-13"><a href="#cb24-13" aria-hidden="true" tabindex="-1"></a>        outline_type<span class="op">=</span>element_blank(),</span>
+<span id="cb24-14"><a href="#cb24-14" aria-hidden="true" tabindex="-1"></a>        show_legend<span class="op">=</span>{<span class="st">"color"</span>: <span class="va">False</span>},</span>
+<span id="cb24-15"><a href="#cb24-15" aria-hidden="true" tabindex="-1"></a>    )</span>
+<span id="cb24-16"><a href="#cb24-16" aria-hidden="true" tabindex="-1"></a>    <span class="op">+</span> geom_ribbon(</span>
+<span id="cb24-17"><a href="#cb24-17" aria-hidden="true" tabindex="-1"></a>        aes(y<span class="op">=</span><span class="st">"fgoe"</span>, ymin<span class="op">=</span><span class="st">"hdi_lower"</span>, ymax<span class="op">=</span><span class="st">"hdi_upper"</span>, fill<span class="op">=</span><span class="st">"player_name"</span>),</span>
+<span id="cb24-18"><a href="#cb24-18" aria-hidden="true" tabindex="-1"></a>        <span class="co"># fill="#00000053",</span></span>
+<span id="cb24-19"><a href="#cb24-19" aria-hidden="true" tabindex="-1"></a>        data<span class="op">=</span>pointrange_data(plot_df, field<span class="op">=</span><span class="st">"p_x"</span>, group<span class="op">=</span>[<span class="st">"player_name"</span>, <span class="st">"distance"</span>]),</span>
+<span id="cb24-20"><a href="#cb24-20" aria-hidden="true" tabindex="-1"></a>        alpha<span class="op">=</span><span class="fl">0.4</span>,</span>
+<span id="cb24-21"><a href="#cb24-21" aria-hidden="true" tabindex="-1"></a>        outline_type<span class="op">=</span>element_blank(),</span>
+<span id="cb24-22"><a href="#cb24-22" aria-hidden="true" tabindex="-1"></a>        show_legend<span class="op">=</span>{<span class="st">"color"</span>: <span class="va">False</span>},</span>
+<span id="cb24-23"><a href="#cb24-23" aria-hidden="true" tabindex="-1"></a>    )</span>
+<span id="cb24-24"><a href="#cb24-24" aria-hidden="true" tabindex="-1"></a>    <span class="op">+</span> geom_line(</span>
+<span id="cb24-25"><a href="#cb24-25" aria-hidden="true" tabindex="-1"></a>        data<span class="op">=</span>plot_df.group_by([<span class="st">"player_name"</span>, <span class="st">"distance"</span>]).agg(pl.col(<span class="st">"p_x"</span>).mean()),</span>
+<span id="cb24-26"><a href="#cb24-26" aria-hidden="true" tabindex="-1"></a>        size<span class="op">=</span><span class="fl">1.5</span>,</span>
+<span id="cb24-27"><a href="#cb24-27" aria-hidden="true" tabindex="-1"></a>        show_legend<span class="op">=</span><span class="va">False</span></span>
+<span id="cb24-28"><a href="#cb24-28" aria-hidden="true" tabindex="-1"></a>    )</span>
+<span id="cb24-29"><a href="#cb24-29" aria-hidden="true" tabindex="-1"></a>    <span class="op">+</span> theme_minimal()</span>
+<span id="cb24-30"><a href="#cb24-30" aria-hidden="true" tabindex="-1"></a>    <span class="op">+</span> theme(legend_position<span class="op">=</span><span class="st">"top"</span>, panel_grid_minor<span class="op">=</span>element_blank())</span>
+<span id="cb24-31"><a href="#cb24-31" aria-hidden="true" tabindex="-1"></a>    <span class="op">+</span> labs(</span>
+<span id="cb24-32"><a href="#cb24-32" aria-hidden="true" tabindex="-1"></a>        title<span class="op">=</span><span class="st">"Modeled Probability by Distance"</span>,</span>
+<span id="cb24-33"><a href="#cb24-33" aria-hidden="true" tabindex="-1"></a>        y<span class="op">=</span><span class="st">"P(Make)"</span>,</span>
+<span id="cb24-34"><a href="#cb24-34" aria-hidden="true" tabindex="-1"></a>        x<span class="op">=</span><span class="st">"Distance"</span>,</span>
+<span id="cb24-35"><a href="#cb24-35" aria-hidden="true" tabindex="-1"></a>        fill<span class="op">=</span><span class="st">"Player:"</span>,</span>
+<span id="cb24-36"><a href="#cb24-36" aria-hidden="true" tabindex="-1"></a>    )</span>
+<span id="cb24-37"><a href="#cb24-37" aria-hidden="true" tabindex="-1"></a>    <span class="op">+</span> scale_x_continuous(limits<span class="op">=</span>(<span class="dv">25</span>, <span class="dv">60</span>))</span>
+<span id="cb24-38"><a href="#cb24-38" aria-hidden="true" tabindex="-1"></a>    <span class="op">+</span> scale_color_manual(values<span class="op">=</span>(palette[<span class="op">-</span><span class="dv">1</span>], palette[<span class="dv">0</span>]))</span>
+<span id="cb24-39"><a href="#cb24-39" aria-hidden="true" tabindex="-1"></a>    <span class="op">+</span> scale_fill_manual(values<span class="op">=</span>(palette[<span class="op">-</span><span class="dv">1</span>], palette[<span class="dv">0</span>]))</span>
+<span id="cb24-40"><a href="#cb24-40" aria-hidden="true" tabindex="-1"></a>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 </details>
 <div class="cell-output cell-output-display">
-<p><img src="kicker_model_files/figure-html/cell-19-output-1.png" width="672" height="480"></p>
+<p><img src="kicker_model_files/figure-html/cell-21-output-1.png" width="672" height="480"></p>
 </div>
 </div>
 </section>
@@ -1248,170 +1316,170 @@ Note
 <section id="leaderboard" class="level2">
 <h2 class="anchored" data-anchor-id="leaderboard">Leaderboard</h2>
 <p>The table below presents the generated leaderboard, showcasing the Player Id, Player Name, Rating (Simulated FGOE), and Rank for the top 10 and bottom 10 kickers evaluated by the model. The <em>Rank</em> column is in ascending order, where a lower rank indicates a better performance. The <em>Top 5</em> column indicates the percentage of simulations in which a player ranked among the top 5 kickers, offering a probabilistic measure of their elite performance.</p>
-<div class="cell" data-execution_count="19">
+<div class="cell" data-execution_count="21">
 <details>
 <summary>Code</summary>
-<div class="sourceCode cell-code" id="cb23"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb23-1"><a href="#cb23-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> create_leaderboard(df: pl.DataFrame) <span class="op">-&gt;</span> pl.DataFrame:</span>
-<span id="cb23-2"><a href="#cb23-2" aria-hidden="true" tabindex="-1"></a>    <span class="co">"""</span></span>
-<span id="cb23-3"><a href="#cb23-3" aria-hidden="true" tabindex="-1"></a><span class="co">    Create the leaderboard of FGOE values</span></span>
-<span id="cb23-4"><a href="#cb23-4" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb23-5"><a href="#cb23-5" aria-hidden="true" tabindex="-1"></a><span class="co">    Args:</span></span>
-<span id="cb23-6"><a href="#cb23-6" aria-hidden="true" tabindex="-1"></a><span class="co">        df: (pl.DataFrame) dataframe from `create_fgoe_draws()`</span></span>
-<span id="cb23-7"><a href="#cb23-7" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb23-8"><a href="#cb23-8" aria-hidden="true" tabindex="-1"></a><span class="co">    Returns:</span></span>
-<span id="cb23-9"><a href="#cb23-9" aria-hidden="true" tabindex="-1"></a><span class="co">        pl.DataFrame: Polars dataframe of leaderboard</span></span>
-<span id="cb23-10"><a href="#cb23-10" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb23-11"><a href="#cb23-11" aria-hidden="true" tabindex="-1"></a><span class="co">    """</span></span>
-<span id="cb23-12"><a href="#cb23-12" aria-hidden="true" tabindex="-1"></a>    idata_post <span class="op">=</span> df.to_pandas().set_index([<span class="st">"chain"</span>, <span class="st">"draw"</span>, <span class="st">"player_name"</span>]).to_xarray()</span>
-<span id="cb23-13"><a href="#cb23-13" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb23-14"><a href="#cb23-14" aria-hidden="true" tabindex="-1"></a>    <span class="co"># perc player was in top 5 of a draw</span></span>
-<span id="cb23-15"><a href="#cb23-15" aria-hidden="true" tabindex="-1"></a>    df_top_5 <span class="op">=</span> (</span>
-<span id="cb23-16"><a href="#cb23-16" aria-hidden="true" tabindex="-1"></a>        df.with_columns(</span>
-<span id="cb23-17"><a href="#cb23-17" aria-hidden="true" tabindex="-1"></a>            player_name<span class="op">=</span>pl.col(<span class="st">"player_name"</span>).cast(pl.Utf8),</span>
-<span id="cb23-18"><a href="#cb23-18" aria-hidden="true" tabindex="-1"></a>            rank<span class="op">=</span>pl.col(<span class="st">"fgoe"</span>).rank(<span class="st">"dense"</span>, descending<span class="op">=</span><span class="va">True</span>).over([<span class="st">"draw"</span>, <span class="st">"chain"</span>]),</span>
-<span id="cb23-19"><a href="#cb23-19" aria-hidden="true" tabindex="-1"></a>        )</span>
-<span id="cb23-20"><a href="#cb23-20" aria-hidden="true" tabindex="-1"></a>        .group_by([<span class="st">"player_name"</span>])</span>
-<span id="cb23-21"><a href="#cb23-21" aria-hidden="true" tabindex="-1"></a>        .agg(top_5<span class="op">=</span>(pl.col(<span class="st">"rank"</span>) <span class="op">&lt;=</span> <span class="dv">5</span>).mean())</span>
-<span id="cb23-22"><a href="#cb23-22" aria-hidden="true" tabindex="-1"></a>        .sort(<span class="st">"top_5"</span>, descending<span class="op">=</span><span class="va">True</span>)</span>
-<span id="cb23-23"><a href="#cb23-23" aria-hidden="true" tabindex="-1"></a>    )</span>
-<span id="cb23-24"><a href="#cb23-24" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb23-25"><a href="#cb23-25" aria-hidden="true" tabindex="-1"></a>    <span class="co"># summary table of the metric, with rank added and joined with top 5</span></span>
-<span id="cb23-26"><a href="#cb23-26" aria-hidden="true" tabindex="-1"></a>    leaderboard <span class="op">=</span> (</span>
-<span id="cb23-27"><a href="#cb23-27" aria-hidden="true" tabindex="-1"></a>        (</span>
-<span id="cb23-28"><a href="#cb23-28" aria-hidden="true" tabindex="-1"></a>            pl.from_pandas(</span>
-<span id="cb23-29"><a href="#cb23-29" aria-hidden="true" tabindex="-1"></a>                az.summary(idata_post, var_names<span class="op">=</span>[<span class="st">"fgoe"</span>], hdi_prob<span class="op">=</span><span class="fl">0.9</span>)</span>
-<span id="cb23-30"><a href="#cb23-30" aria-hidden="true" tabindex="-1"></a>                .reset_index()</span>
-<span id="cb23-31"><a href="#cb23-31" aria-hidden="true" tabindex="-1"></a>                .assign(player_name<span class="op">=</span><span class="kw">lambda</span> x: x[<span class="st">"index"</span>].<span class="bu">str</span>.extract(<span class="vs">r"fgoe\[(.+)\]"</span>))</span>
-<span id="cb23-32"><a href="#cb23-32" aria-hidden="true" tabindex="-1"></a>            )</span>
-<span id="cb23-33"><a href="#cb23-33" aria-hidden="true" tabindex="-1"></a>            .join(df_top_5, on<span class="op">=</span><span class="st">"player_name"</span>)</span>
-<span id="cb23-34"><a href="#cb23-34" aria-hidden="true" tabindex="-1"></a>            .sort([<span class="st">"mean"</span>], descending<span class="op">=</span><span class="va">True</span>)</span>
-<span id="cb23-35"><a href="#cb23-35" aria-hidden="true" tabindex="-1"></a>            .with_row_index(<span class="st">"rank"</span>, offset<span class="op">=</span><span class="dv">1</span>)</span>
-<span id="cb23-36"><a href="#cb23-36" aria-hidden="true" tabindex="-1"></a>            .rename({<span class="st">"mean"</span>: <span class="st">"rating"</span>})</span>
-<span id="cb23-37"><a href="#cb23-37" aria-hidden="true" tabindex="-1"></a>            .join(</span>
-<span id="cb23-38"><a href="#cb23-38" aria-hidden="true" tabindex="-1"></a>                df[[<span class="st">"player_name"</span>, <span class="st">"player_id"</span>]]</span>
-<span id="cb23-39"><a href="#cb23-39" aria-hidden="true" tabindex="-1"></a>                .unique()</span>
-<span id="cb23-40"><a href="#cb23-40" aria-hidden="true" tabindex="-1"></a>                .with_columns(pl.col(<span class="st">"player_name"</span>).cast(pl.Utf8)),</span>
-<span id="cb23-41"><a href="#cb23-41" aria-hidden="true" tabindex="-1"></a>                on<span class="op">=</span><span class="st">"player_name"</span>,</span>
-<span id="cb23-42"><a href="#cb23-42" aria-hidden="true" tabindex="-1"></a>            )</span>
-<span id="cb23-43"><a href="#cb23-43" aria-hidden="true" tabindex="-1"></a>        )</span>
-<span id="cb23-44"><a href="#cb23-44" aria-hidden="true" tabindex="-1"></a>        .select(</span>
-<span id="cb23-45"><a href="#cb23-45" aria-hidden="true" tabindex="-1"></a>            [</span>
-<span id="cb23-46"><a href="#cb23-46" aria-hidden="true" tabindex="-1"></a>                <span class="st">"player_id"</span>,</span>
-<span id="cb23-47"><a href="#cb23-47" aria-hidden="true" tabindex="-1"></a>                <span class="st">"player_name"</span>,</span>
-<span id="cb23-48"><a href="#cb23-48" aria-hidden="true" tabindex="-1"></a>                <span class="st">"rank"</span>,</span>
-<span id="cb23-49"><a href="#cb23-49" aria-hidden="true" tabindex="-1"></a>                <span class="st">"rating"</span>,</span>
-<span id="cb23-50"><a href="#cb23-50" aria-hidden="true" tabindex="-1"></a>                <span class="st">"sd"</span>,</span>
-<span id="cb23-51"><a href="#cb23-51" aria-hidden="true" tabindex="-1"></a>                <span class="st">"hdi_5%"</span>,</span>
-<span id="cb23-52"><a href="#cb23-52" aria-hidden="true" tabindex="-1"></a>                <span class="st">"hdi_95%"</span>,</span>
-<span id="cb23-53"><a href="#cb23-53" aria-hidden="true" tabindex="-1"></a>                <span class="st">"top_5"</span>,</span>
-<span id="cb23-54"><a href="#cb23-54" aria-hidden="true" tabindex="-1"></a>            ]</span>
-<span id="cb23-55"><a href="#cb23-55" aria-hidden="true" tabindex="-1"></a>        )</span>
-<span id="cb23-56"><a href="#cb23-56" aria-hidden="true" tabindex="-1"></a>        .sort([<span class="st">"rank"</span>])</span>
-<span id="cb23-57"><a href="#cb23-57" aria-hidden="true" tabindex="-1"></a>    )</span>
-<span id="cb23-58"><a href="#cb23-58" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb23-59"><a href="#cb23-59" aria-hidden="true" tabindex="-1"></a>    <span class="cf">return</span> leaderboard</span>
-<span id="cb23-60"><a href="#cb23-60" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb23-61"><a href="#cb23-61" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb23-62"><a href="#cb23-62" aria-hidden="true" tabindex="-1"></a>leaderboard <span class="op">=</span> create_leaderboard(df_output)</span>
-<span id="cb23-63"><a href="#cb23-63" aria-hidden="true" tabindex="-1"></a>leaderboard.write_csv(<span class="st">"leaderboard.csv"</span>)</span>
-<span id="cb23-64"><a href="#cb23-64" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb23-65"><a href="#cb23-65" aria-hidden="true" tabindex="-1"></a>(</span>
-<span id="cb23-66"><a href="#cb23-66" aria-hidden="true" tabindex="-1"></a>    GT(</span>
-<span id="cb23-67"><a href="#cb23-67" aria-hidden="true" tabindex="-1"></a>        pl.concat([leaderboard.head(<span class="dv">10</span>), leaderboard.tail(<span class="dv">10</span>)]).rename(</span>
-<span id="cb23-68"><a href="#cb23-68" aria-hidden="true" tabindex="-1"></a>            {<span class="st">"hdi_5%"</span>: <span class="st">"lower"</span>, <span class="st">"hdi_95%"</span>: <span class="st">"upper"</span>}</span>
-<span id="cb23-69"><a href="#cb23-69" aria-hidden="true" tabindex="-1"></a>        )</span>
-<span id="cb23-70"><a href="#cb23-70" aria-hidden="true" tabindex="-1"></a>    )</span>
-<span id="cb23-71"><a href="#cb23-71" aria-hidden="true" tabindex="-1"></a>    .tab_header(</span>
-<span id="cb23-72"><a href="#cb23-72" aria-hidden="true" tabindex="-1"></a>        title<span class="op">=</span><span class="st">"2018 NFL Kicker Leaderboard"</span>, subtitle<span class="op">=</span><span class="st">"Top and bottom 10 players shown"</span></span>
-<span id="cb23-73"><a href="#cb23-73" aria-hidden="true" tabindex="-1"></a>    )</span>
-<span id="cb23-74"><a href="#cb23-74" aria-hidden="true" tabindex="-1"></a>    .tab_spanner(label<span class="op">=</span><span class="st">"Simulated FGOE"</span>, columns<span class="op">=</span>[<span class="st">"rating"</span>, <span class="st">"sd"</span>, <span class="st">"lower"</span>, <span class="st">"upper"</span>])</span>
-<span id="cb23-75"><a href="#cb23-75" aria-hidden="true" tabindex="-1"></a>    <span class="co"># .tab_stubhead(label="rank")</span></span>
-<span id="cb23-76"><a href="#cb23-76" aria-hidden="true" tabindex="-1"></a>    .fmt_number(columns<span class="op">=</span>[<span class="st">"rating"</span>, <span class="st">"sd"</span>, <span class="st">"lower"</span>, <span class="st">"upper"</span>], decimals<span class="op">=</span><span class="dv">2</span>)</span>
-<span id="cb23-77"><a href="#cb23-77" aria-hidden="true" tabindex="-1"></a>    .fmt_percent(<span class="st">"top_5"</span>, decimals<span class="op">=</span><span class="dv">1</span>)</span>
-<span id="cb23-78"><a href="#cb23-78" aria-hidden="true" tabindex="-1"></a>    .data_color(</span>
-<span id="cb23-79"><a href="#cb23-79" aria-hidden="true" tabindex="-1"></a>        columns<span class="op">=</span>[<span class="st">"rating"</span>],</span>
-<span id="cb23-80"><a href="#cb23-80" aria-hidden="true" tabindex="-1"></a>        domain<span class="op">=</span>[leaderboard[<span class="st">"rating"</span>].<span class="bu">min</span>(), leaderboard[<span class="st">"rating"</span>].<span class="bu">max</span>()],</span>
-<span id="cb23-81"><a href="#cb23-81" aria-hidden="true" tabindex="-1"></a>        palette<span class="op">=</span>[<span class="st">"#535c78"</span>, <span class="st">"white"</span>, <span class="st">"#ff4b00"</span>],</span>
-<span id="cb23-82"><a href="#cb23-82" aria-hidden="true" tabindex="-1"></a>        na_color<span class="op">=</span><span class="st">"white"</span>,</span>
-<span id="cb23-83"><a href="#cb23-83" aria-hidden="true" tabindex="-1"></a>    )</span>
-<span id="cb23-84"><a href="#cb23-84" aria-hidden="true" tabindex="-1"></a>    .data_color(</span>
-<span id="cb23-85"><a href="#cb23-85" aria-hidden="true" tabindex="-1"></a>        columns<span class="op">=</span>[<span class="st">"lower"</span>],</span>
-<span id="cb23-86"><a href="#cb23-86" aria-hidden="true" tabindex="-1"></a>        domain<span class="op">=</span>[leaderboard[<span class="st">"hdi_5%"</span>].<span class="bu">min</span>(), leaderboard[<span class="st">"hdi_5%"</span>].<span class="bu">max</span>()],</span>
-<span id="cb23-87"><a href="#cb23-87" aria-hidden="true" tabindex="-1"></a>        palette<span class="op">=</span>[<span class="st">"#535c78"</span>, <span class="st">"white"</span>, <span class="st">"#ff4b00"</span>],</span>
-<span id="cb23-88"><a href="#cb23-88" aria-hidden="true" tabindex="-1"></a>        na_color<span class="op">=</span><span class="st">"white"</span>,</span>
-<span id="cb23-89"><a href="#cb23-89" aria-hidden="true" tabindex="-1"></a>    )</span>
-<span id="cb23-90"><a href="#cb23-90" aria-hidden="true" tabindex="-1"></a>    .data_color(</span>
-<span id="cb23-91"><a href="#cb23-91" aria-hidden="true" tabindex="-1"></a>        columns<span class="op">=</span>[<span class="st">"upper"</span>],</span>
-<span id="cb23-92"><a href="#cb23-92" aria-hidden="true" tabindex="-1"></a>        domain<span class="op">=</span>[leaderboard[<span class="st">"hdi_95%"</span>].<span class="bu">min</span>(), leaderboard[<span class="st">"hdi_95%"</span>].<span class="bu">max</span>()],</span>
-<span id="cb23-93"><a href="#cb23-93" aria-hidden="true" tabindex="-1"></a>        palette<span class="op">=</span>[<span class="st">"#535c78"</span>, <span class="st">"white"</span>, <span class="st">"#ff4b00"</span>],</span>
-<span id="cb23-94"><a href="#cb23-94" aria-hidden="true" tabindex="-1"></a>        na_color<span class="op">=</span><span class="st">"white"</span>,</span>
-<span id="cb23-95"><a href="#cb23-95" aria-hidden="true" tabindex="-1"></a>    )</span>
-<span id="cb23-96"><a href="#cb23-96" aria-hidden="true" tabindex="-1"></a>    .data_color(</span>
-<span id="cb23-97"><a href="#cb23-97" aria-hidden="true" tabindex="-1"></a>        columns<span class="op">=</span>[<span class="st">"top_5"</span>],</span>
-<span id="cb23-98"><a href="#cb23-98" aria-hidden="true" tabindex="-1"></a>        domain<span class="op">=</span>[<span class="dv">0</span>, <span class="dv">1</span>],</span>
-<span id="cb23-99"><a href="#cb23-99" aria-hidden="true" tabindex="-1"></a>        palette<span class="op">=</span>[<span class="st">"white"</span>, <span class="st">"#ff4b00"</span>],</span>
-<span id="cb23-100"><a href="#cb23-100" aria-hidden="true" tabindex="-1"></a>        na_color<span class="op">=</span><span class="st">"white"</span>,</span>
-<span id="cb23-101"><a href="#cb23-101" aria-hidden="true" tabindex="-1"></a>    )</span>
-<span id="cb23-102"><a href="#cb23-102" aria-hidden="true" tabindex="-1"></a>    .cols_label(</span>
-<span id="cb23-103"><a href="#cb23-103" aria-hidden="true" tabindex="-1"></a>        player_id<span class="op">=</span>html(<span class="st">"Player Id"</span>),</span>
-<span id="cb23-104"><a href="#cb23-104" aria-hidden="true" tabindex="-1"></a>        player_name<span class="op">=</span>html(<span class="st">"Player Name"</span>),</span>
-<span id="cb23-105"><a href="#cb23-105" aria-hidden="true" tabindex="-1"></a>        rank<span class="op">=</span><span class="st">"Rank"</span>,</span>
-<span id="cb23-106"><a href="#cb23-106" aria-hidden="true" tabindex="-1"></a>        rating<span class="op">=</span><span class="st">"Rating"</span>,</span>
-<span id="cb23-107"><a href="#cb23-107" aria-hidden="true" tabindex="-1"></a>        sd<span class="op">=</span><span class="st">"Variance"</span>,</span>
-<span id="cb23-108"><a href="#cb23-108" aria-hidden="true" tabindex="-1"></a>        lower<span class="op">=</span><span class="st">"Low-end"</span>,</span>
-<span id="cb23-109"><a href="#cb23-109" aria-hidden="true" tabindex="-1"></a>        upper<span class="op">=</span><span class="st">"High-end"</span>,</span>
-<span id="cb23-110"><a href="#cb23-110" aria-hidden="true" tabindex="-1"></a>        top_5<span class="op">=</span><span class="st">"Top 5"</span>,</span>
-<span id="cb23-111"><a href="#cb23-111" aria-hidden="true" tabindex="-1"></a>    )</span>
-<span id="cb23-112"><a href="#cb23-112" aria-hidden="true" tabindex="-1"></a>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode cell-code" id="cb25"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb25-1"><a href="#cb25-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> create_leaderboard(df: pl.DataFrame) <span class="op">-&gt;</span> pl.DataFrame:</span>
+<span id="cb25-2"><a href="#cb25-2" aria-hidden="true" tabindex="-1"></a>    <span class="co">"""</span></span>
+<span id="cb25-3"><a href="#cb25-3" aria-hidden="true" tabindex="-1"></a><span class="co">    Create the leaderboard of FGOE values</span></span>
+<span id="cb25-4"><a href="#cb25-4" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb25-5"><a href="#cb25-5" aria-hidden="true" tabindex="-1"></a><span class="co">    Args:</span></span>
+<span id="cb25-6"><a href="#cb25-6" aria-hidden="true" tabindex="-1"></a><span class="co">        df: (pl.DataFrame) dataframe from `create_fgoe_draws()`</span></span>
+<span id="cb25-7"><a href="#cb25-7" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb25-8"><a href="#cb25-8" aria-hidden="true" tabindex="-1"></a><span class="co">    Returns:</span></span>
+<span id="cb25-9"><a href="#cb25-9" aria-hidden="true" tabindex="-1"></a><span class="co">        pl.DataFrame: Polars dataframe of leaderboard</span></span>
+<span id="cb25-10"><a href="#cb25-10" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb25-11"><a href="#cb25-11" aria-hidden="true" tabindex="-1"></a><span class="co">    """</span></span>
+<span id="cb25-12"><a href="#cb25-12" aria-hidden="true" tabindex="-1"></a>    idata_post <span class="op">=</span> df.to_pandas().set_index([<span class="st">"chain"</span>, <span class="st">"draw"</span>, <span class="st">"player_name"</span>]).to_xarray()</span>
+<span id="cb25-13"><a href="#cb25-13" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb25-14"><a href="#cb25-14" aria-hidden="true" tabindex="-1"></a>    <span class="co"># perc player was in top 5 of a draw</span></span>
+<span id="cb25-15"><a href="#cb25-15" aria-hidden="true" tabindex="-1"></a>    df_top_5 <span class="op">=</span> (</span>
+<span id="cb25-16"><a href="#cb25-16" aria-hidden="true" tabindex="-1"></a>        df.with_columns(</span>
+<span id="cb25-17"><a href="#cb25-17" aria-hidden="true" tabindex="-1"></a>            player_name<span class="op">=</span>pl.col(<span class="st">"player_name"</span>).cast(pl.Utf8),</span>
+<span id="cb25-18"><a href="#cb25-18" aria-hidden="true" tabindex="-1"></a>            rank<span class="op">=</span>pl.col(<span class="st">"fgoe"</span>).rank(<span class="st">"dense"</span>, descending<span class="op">=</span><span class="va">True</span>).over([<span class="st">"draw"</span>, <span class="st">"chain"</span>]),</span>
+<span id="cb25-19"><a href="#cb25-19" aria-hidden="true" tabindex="-1"></a>        )</span>
+<span id="cb25-20"><a href="#cb25-20" aria-hidden="true" tabindex="-1"></a>        .group_by([<span class="st">"player_name"</span>])</span>
+<span id="cb25-21"><a href="#cb25-21" aria-hidden="true" tabindex="-1"></a>        .agg(top_5<span class="op">=</span>(pl.col(<span class="st">"rank"</span>) <span class="op">&lt;=</span> <span class="dv">5</span>).mean())</span>
+<span id="cb25-22"><a href="#cb25-22" aria-hidden="true" tabindex="-1"></a>        .sort(<span class="st">"top_5"</span>, descending<span class="op">=</span><span class="va">True</span>)</span>
+<span id="cb25-23"><a href="#cb25-23" aria-hidden="true" tabindex="-1"></a>    )</span>
+<span id="cb25-24"><a href="#cb25-24" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb25-25"><a href="#cb25-25" aria-hidden="true" tabindex="-1"></a>    <span class="co"># summary table of the metric, with rank added and joined with top 5</span></span>
+<span id="cb25-26"><a href="#cb25-26" aria-hidden="true" tabindex="-1"></a>    leaderboard <span class="op">=</span> (</span>
+<span id="cb25-27"><a href="#cb25-27" aria-hidden="true" tabindex="-1"></a>        (</span>
+<span id="cb25-28"><a href="#cb25-28" aria-hidden="true" tabindex="-1"></a>            pl.from_pandas(</span>
+<span id="cb25-29"><a href="#cb25-29" aria-hidden="true" tabindex="-1"></a>                az.summary(idata_post, var_names<span class="op">=</span>[<span class="st">"fgoe"</span>], hdi_prob<span class="op">=</span><span class="fl">0.9</span>)</span>
+<span id="cb25-30"><a href="#cb25-30" aria-hidden="true" tabindex="-1"></a>                .reset_index()</span>
+<span id="cb25-31"><a href="#cb25-31" aria-hidden="true" tabindex="-1"></a>                .assign(player_name<span class="op">=</span><span class="kw">lambda</span> x: x[<span class="st">"index"</span>].<span class="bu">str</span>.extract(<span class="vs">r"fgoe\[(.+)\]"</span>))</span>
+<span id="cb25-32"><a href="#cb25-32" aria-hidden="true" tabindex="-1"></a>            )</span>
+<span id="cb25-33"><a href="#cb25-33" aria-hidden="true" tabindex="-1"></a>            .join(df_top_5, on<span class="op">=</span><span class="st">"player_name"</span>)</span>
+<span id="cb25-34"><a href="#cb25-34" aria-hidden="true" tabindex="-1"></a>            .sort([<span class="st">"mean"</span>], descending<span class="op">=</span><span class="va">True</span>)</span>
+<span id="cb25-35"><a href="#cb25-35" aria-hidden="true" tabindex="-1"></a>            .with_row_index(<span class="st">"rank"</span>, offset<span class="op">=</span><span class="dv">1</span>)</span>
+<span id="cb25-36"><a href="#cb25-36" aria-hidden="true" tabindex="-1"></a>            .rename({<span class="st">"mean"</span>: <span class="st">"rating"</span>})</span>
+<span id="cb25-37"><a href="#cb25-37" aria-hidden="true" tabindex="-1"></a>            .join(</span>
+<span id="cb25-38"><a href="#cb25-38" aria-hidden="true" tabindex="-1"></a>                df[[<span class="st">"player_name"</span>, <span class="st">"player_id"</span>]]</span>
+<span id="cb25-39"><a href="#cb25-39" aria-hidden="true" tabindex="-1"></a>                .unique()</span>
+<span id="cb25-40"><a href="#cb25-40" aria-hidden="true" tabindex="-1"></a>                .with_columns(pl.col(<span class="st">"player_name"</span>).cast(pl.Utf8)),</span>
+<span id="cb25-41"><a href="#cb25-41" aria-hidden="true" tabindex="-1"></a>                on<span class="op">=</span><span class="st">"player_name"</span>,</span>
+<span id="cb25-42"><a href="#cb25-42" aria-hidden="true" tabindex="-1"></a>            )</span>
+<span id="cb25-43"><a href="#cb25-43" aria-hidden="true" tabindex="-1"></a>        )</span>
+<span id="cb25-44"><a href="#cb25-44" aria-hidden="true" tabindex="-1"></a>        .select(</span>
+<span id="cb25-45"><a href="#cb25-45" aria-hidden="true" tabindex="-1"></a>            [</span>
+<span id="cb25-46"><a href="#cb25-46" aria-hidden="true" tabindex="-1"></a>                <span class="st">"player_id"</span>,</span>
+<span id="cb25-47"><a href="#cb25-47" aria-hidden="true" tabindex="-1"></a>                <span class="st">"player_name"</span>,</span>
+<span id="cb25-48"><a href="#cb25-48" aria-hidden="true" tabindex="-1"></a>                <span class="st">"rank"</span>,</span>
+<span id="cb25-49"><a href="#cb25-49" aria-hidden="true" tabindex="-1"></a>                <span class="st">"rating"</span>,</span>
+<span id="cb25-50"><a href="#cb25-50" aria-hidden="true" tabindex="-1"></a>                <span class="st">"sd"</span>,</span>
+<span id="cb25-51"><a href="#cb25-51" aria-hidden="true" tabindex="-1"></a>                <span class="st">"hdi_5%"</span>,</span>
+<span id="cb25-52"><a href="#cb25-52" aria-hidden="true" tabindex="-1"></a>                <span class="st">"hdi_95%"</span>,</span>
+<span id="cb25-53"><a href="#cb25-53" aria-hidden="true" tabindex="-1"></a>                <span class="st">"top_5"</span>,</span>
+<span id="cb25-54"><a href="#cb25-54" aria-hidden="true" tabindex="-1"></a>            ]</span>
+<span id="cb25-55"><a href="#cb25-55" aria-hidden="true" tabindex="-1"></a>        )</span>
+<span id="cb25-56"><a href="#cb25-56" aria-hidden="true" tabindex="-1"></a>        .sort([<span class="st">"rank"</span>])</span>
+<span id="cb25-57"><a href="#cb25-57" aria-hidden="true" tabindex="-1"></a>    )</span>
+<span id="cb25-58"><a href="#cb25-58" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb25-59"><a href="#cb25-59" aria-hidden="true" tabindex="-1"></a>    <span class="cf">return</span> leaderboard</span>
+<span id="cb25-60"><a href="#cb25-60" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb25-61"><a href="#cb25-61" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb25-62"><a href="#cb25-62" aria-hidden="true" tabindex="-1"></a>leaderboard <span class="op">=</span> create_leaderboard(df_output)</span>
+<span id="cb25-63"><a href="#cb25-63" aria-hidden="true" tabindex="-1"></a>leaderboard.write_csv(<span class="st">"leaderboard.csv"</span>)</span>
+<span id="cb25-64"><a href="#cb25-64" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb25-65"><a href="#cb25-65" aria-hidden="true" tabindex="-1"></a>(</span>
+<span id="cb25-66"><a href="#cb25-66" aria-hidden="true" tabindex="-1"></a>    GT(</span>
+<span id="cb25-67"><a href="#cb25-67" aria-hidden="true" tabindex="-1"></a>        pl.concat([leaderboard.head(<span class="dv">10</span>), leaderboard.tail(<span class="dv">10</span>)]).rename(</span>
+<span id="cb25-68"><a href="#cb25-68" aria-hidden="true" tabindex="-1"></a>            {<span class="st">"hdi_5%"</span>: <span class="st">"lower"</span>, <span class="st">"hdi_95%"</span>: <span class="st">"upper"</span>}</span>
+<span id="cb25-69"><a href="#cb25-69" aria-hidden="true" tabindex="-1"></a>        )</span>
+<span id="cb25-70"><a href="#cb25-70" aria-hidden="true" tabindex="-1"></a>    )</span>
+<span id="cb25-71"><a href="#cb25-71" aria-hidden="true" tabindex="-1"></a>    .tab_header(</span>
+<span id="cb25-72"><a href="#cb25-72" aria-hidden="true" tabindex="-1"></a>        title<span class="op">=</span><span class="st">"2018 NFL Kicker Leaderboard"</span>, subtitle<span class="op">=</span><span class="st">"Top and bottom 10 players shown"</span></span>
+<span id="cb25-73"><a href="#cb25-73" aria-hidden="true" tabindex="-1"></a>    )</span>
+<span id="cb25-74"><a href="#cb25-74" aria-hidden="true" tabindex="-1"></a>    .tab_spanner(label<span class="op">=</span><span class="st">"Simulated FGOE"</span>, columns<span class="op">=</span>[<span class="st">"rating"</span>, <span class="st">"sd"</span>, <span class="st">"lower"</span>, <span class="st">"upper"</span>])</span>
+<span id="cb25-75"><a href="#cb25-75" aria-hidden="true" tabindex="-1"></a>    <span class="co"># .tab_stubhead(label="rank")</span></span>
+<span id="cb25-76"><a href="#cb25-76" aria-hidden="true" tabindex="-1"></a>    .fmt_number(columns<span class="op">=</span>[<span class="st">"rating"</span>, <span class="st">"sd"</span>, <span class="st">"lower"</span>, <span class="st">"upper"</span>], decimals<span class="op">=</span><span class="dv">2</span>)</span>
+<span id="cb25-77"><a href="#cb25-77" aria-hidden="true" tabindex="-1"></a>    .fmt_percent(<span class="st">"top_5"</span>, decimals<span class="op">=</span><span class="dv">1</span>)</span>
+<span id="cb25-78"><a href="#cb25-78" aria-hidden="true" tabindex="-1"></a>    .data_color(</span>
+<span id="cb25-79"><a href="#cb25-79" aria-hidden="true" tabindex="-1"></a>        columns<span class="op">=</span>[<span class="st">"rating"</span>],</span>
+<span id="cb25-80"><a href="#cb25-80" aria-hidden="true" tabindex="-1"></a>        domain<span class="op">=</span>[leaderboard[<span class="st">"rating"</span>].<span class="bu">min</span>(), leaderboard[<span class="st">"rating"</span>].<span class="bu">max</span>()],</span>
+<span id="cb25-81"><a href="#cb25-81" aria-hidden="true" tabindex="-1"></a>        palette<span class="op">=</span>[<span class="st">"#535c78"</span>, <span class="st">"white"</span>, <span class="st">"#ff4b00"</span>],</span>
+<span id="cb25-82"><a href="#cb25-82" aria-hidden="true" tabindex="-1"></a>        na_color<span class="op">=</span><span class="st">"white"</span>,</span>
+<span id="cb25-83"><a href="#cb25-83" aria-hidden="true" tabindex="-1"></a>    )</span>
+<span id="cb25-84"><a href="#cb25-84" aria-hidden="true" tabindex="-1"></a>    .data_color(</span>
+<span id="cb25-85"><a href="#cb25-85" aria-hidden="true" tabindex="-1"></a>        columns<span class="op">=</span>[<span class="st">"lower"</span>],</span>
+<span id="cb25-86"><a href="#cb25-86" aria-hidden="true" tabindex="-1"></a>        domain<span class="op">=</span>[leaderboard[<span class="st">"hdi_5%"</span>].<span class="bu">min</span>(), leaderboard[<span class="st">"hdi_5%"</span>].<span class="bu">max</span>()],</span>
+<span id="cb25-87"><a href="#cb25-87" aria-hidden="true" tabindex="-1"></a>        palette<span class="op">=</span>[<span class="st">"#535c78"</span>, <span class="st">"white"</span>, <span class="st">"#ff4b00"</span>],</span>
+<span id="cb25-88"><a href="#cb25-88" aria-hidden="true" tabindex="-1"></a>        na_color<span class="op">=</span><span class="st">"white"</span>,</span>
+<span id="cb25-89"><a href="#cb25-89" aria-hidden="true" tabindex="-1"></a>    )</span>
+<span id="cb25-90"><a href="#cb25-90" aria-hidden="true" tabindex="-1"></a>    .data_color(</span>
+<span id="cb25-91"><a href="#cb25-91" aria-hidden="true" tabindex="-1"></a>        columns<span class="op">=</span>[<span class="st">"upper"</span>],</span>
+<span id="cb25-92"><a href="#cb25-92" aria-hidden="true" tabindex="-1"></a>        domain<span class="op">=</span>[leaderboard[<span class="st">"hdi_95%"</span>].<span class="bu">min</span>(), leaderboard[<span class="st">"hdi_95%"</span>].<span class="bu">max</span>()],</span>
+<span id="cb25-93"><a href="#cb25-93" aria-hidden="true" tabindex="-1"></a>        palette<span class="op">=</span>[<span class="st">"#535c78"</span>, <span class="st">"white"</span>, <span class="st">"#ff4b00"</span>],</span>
+<span id="cb25-94"><a href="#cb25-94" aria-hidden="true" tabindex="-1"></a>        na_color<span class="op">=</span><span class="st">"white"</span>,</span>
+<span id="cb25-95"><a href="#cb25-95" aria-hidden="true" tabindex="-1"></a>    )</span>
+<span id="cb25-96"><a href="#cb25-96" aria-hidden="true" tabindex="-1"></a>    .data_color(</span>
+<span id="cb25-97"><a href="#cb25-97" aria-hidden="true" tabindex="-1"></a>        columns<span class="op">=</span>[<span class="st">"top_5"</span>],</span>
+<span id="cb25-98"><a href="#cb25-98" aria-hidden="true" tabindex="-1"></a>        domain<span class="op">=</span>[<span class="dv">0</span>, <span class="dv">1</span>],</span>
+<span id="cb25-99"><a href="#cb25-99" aria-hidden="true" tabindex="-1"></a>        palette<span class="op">=</span>[<span class="st">"white"</span>, <span class="st">"#ff4b00"</span>],</span>
+<span id="cb25-100"><a href="#cb25-100" aria-hidden="true" tabindex="-1"></a>        na_color<span class="op">=</span><span class="st">"white"</span>,</span>
+<span id="cb25-101"><a href="#cb25-101" aria-hidden="true" tabindex="-1"></a>    )</span>
+<span id="cb25-102"><a href="#cb25-102" aria-hidden="true" tabindex="-1"></a>    .cols_label(</span>
+<span id="cb25-103"><a href="#cb25-103" aria-hidden="true" tabindex="-1"></a>        player_id<span class="op">=</span>html(<span class="st">"Player Id"</span>),</span>
+<span id="cb25-104"><a href="#cb25-104" aria-hidden="true" tabindex="-1"></a>        player_name<span class="op">=</span>html(<span class="st">"Player Name"</span>),</span>
+<span id="cb25-105"><a href="#cb25-105" aria-hidden="true" tabindex="-1"></a>        rank<span class="op">=</span><span class="st">"Rank"</span>,</span>
+<span id="cb25-106"><a href="#cb25-106" aria-hidden="true" tabindex="-1"></a>        rating<span class="op">=</span><span class="st">"Rating"</span>,</span>
+<span id="cb25-107"><a href="#cb25-107" aria-hidden="true" tabindex="-1"></a>        sd<span class="op">=</span><span class="st">"Variance"</span>,</span>
+<span id="cb25-108"><a href="#cb25-108" aria-hidden="true" tabindex="-1"></a>        lower<span class="op">=</span><span class="st">"Low-end"</span>,</span>
+<span id="cb25-109"><a href="#cb25-109" aria-hidden="true" tabindex="-1"></a>        upper<span class="op">=</span><span class="st">"High-end"</span>,</span>
+<span id="cb25-110"><a href="#cb25-110" aria-hidden="true" tabindex="-1"></a>        top_5<span class="op">=</span><span class="st">"Top 5"</span>,</span>
+<span id="cb25-111"><a href="#cb25-111" aria-hidden="true" tabindex="-1"></a>    )</span>
+<span id="cb25-112"><a href="#cb25-112" aria-hidden="true" tabindex="-1"></a>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 </details>
-<div class="cell-output cell-output-display" data-execution_count="19">
+<div class="cell-output cell-output-display" data-execution_count="21">
 
-<div id="dldkllatth" style="padding-left:0px;padding-right:0px;padding-top:10px;padding-bottom:10px;overflow-x:auto;overflow-y:auto;width:auto;height:auto;">
+<div id="rqwyzhizzt" style="padding-left:0px;padding-right:0px;padding-top:10px;padding-bottom:10px;overflow-x:auto;overflow-y:auto;width:auto;height:auto;">
 <style>
-#dldkllatth table {
+#rqwyzhizzt table {
           font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Helvetica Neue', 'Fira Sans', 'Droid Sans', Arial, sans-serif;
           -webkit-font-smoothing: antialiased;
           -moz-osx-font-smoothing: grayscale;
         }
 
-#dldkllatth thead, tbody, tfoot, tr, td, th { border-style: none; }
+#rqwyzhizzt thead, tbody, tfoot, tr, td, th { border-style: none; }
  tr { background-color: transparent; }
-#dldkllatth p { margin: 0; padding: 0; }
- #dldkllatth .gt_table { display: table; border-collapse: collapse; line-height: normal; margin-left: auto; margin-right: auto; color: #333333; font-size: 16px; font-weight: normal; font-style: normal; background-color: #FFFFFF; width: auto; border-top-style: solid; border-top-width: 2px; border-top-color: #A8A8A8; border-right-style: none; border-right-width: 2px; border-right-color: #D3D3D3; border-bottom-style: solid; border-bottom-width: 2px; border-bottom-color: #A8A8A8; border-left-style: none; border-left-width: 2px; border-left-color: #D3D3D3; }
- #dldkllatth .gt_caption { padding-top: 4px; padding-bottom: 4px; }
- #dldkllatth .gt_title { color: #333333; font-size: 125%; font-weight: initial; padding-top: 4px; padding-bottom: 4px; padding-left: 5px; padding-right: 5px; border-bottom-color: #FFFFFF; border-bottom-width: 0; }
- #dldkllatth .gt_subtitle { color: #333333; font-size: 85%; font-weight: initial; padding-top: 3px; padding-bottom: 5px; padding-left: 5px; padding-right: 5px; border-top-color: #FFFFFF; border-top-width: 0; }
- #dldkllatth .gt_heading { background-color: #FFFFFF; text-align: center; border-bottom-color: #FFFFFF; border-left-style: none; border-left-width: 1px; border-left-color: #D3D3D3; border-right-style: none; border-right-width: 1px; border-right-color: #D3D3D3; }
- #dldkllatth .gt_bottom_border { border-bottom-style: solid; border-bottom-width: 2px; border-bottom-color: #D3D3D3; }
- #dldkllatth .gt_col_headings { border-top-style: solid; border-top-width: 2px; border-top-color: #D3D3D3; border-bottom-style: solid; border-bottom-width: 2px; border-bottom-color: #D3D3D3; border-left-style: none; border-left-width: 1px; border-left-color: #D3D3D3; border-right-style: none; border-right-width: 1px; border-right-color: #D3D3D3; }
- #dldkllatth .gt_col_heading { color: #333333; background-color: #FFFFFF; font-size: 100%; font-weight: normal; text-transform: inherit; border-left-style: none; border-left-width: 1px; border-left-color: #D3D3D3; border-right-style: none; border-right-width: 1px; border-right-color: #D3D3D3; vertical-align: bottom; padding-top: 5px; padding-bottom: 5px; padding-left: 5px; padding-right: 5px; overflow-x: hidden; }
- #dldkllatth .gt_column_spanner_outer { color: #333333; background-color: #FFFFFF; font-size: 100%; font-weight: normal; text-transform: inherit; padding-top: 0; padding-bottom: 0; padding-left: 4px; padding-right: 4px; }
- #dldkllatth .gt_column_spanner_outer:first-child { padding-left: 0; }
- #dldkllatth .gt_column_spanner_outer:last-child { padding-right: 0; }
- #dldkllatth .gt_column_spanner { border-bottom-style: solid; border-bottom-width: 2px; border-bottom-color: #D3D3D3; vertical-align: bottom; padding-top: 5px; padding-bottom: 5px; overflow-x: hidden; display: inline-block; width: 100%; }
- #dldkllatth .gt_spanner_row { border-bottom-style: hidden; }
- #dldkllatth .gt_group_heading { padding-top: 8px; padding-bottom: 8px; padding-left: 5px; padding-right: 5px; color: #333333; background-color: #FFFFFF; font-size: 100%; font-weight: initial; text-transform: inherit; border-top-style: solid; border-top-width: 2px; border-top-color: #D3D3D3; border-bottom-style: solid; border-bottom-width: 2px; border-bottom-color: #D3D3D3; border-left-style: none; border-left-width: 1px; border-left-color: #D3D3D3; border-right-style: none; border-right-width: 1px; border-right-color: #D3D3D3; vertical-align: middle; text-align: left; }
- #dldkllatth .gt_empty_group_heading { padding: 0.5px; color: #333333; background-color: #FFFFFF; font-size: 100%; font-weight: initial; border-top-style: solid; border-top-width: 2px; border-top-color: #D3D3D3; border-bottom-style: solid; border-bottom-width: 2px; border-bottom-color: #D3D3D3; vertical-align: middle; }
- #dldkllatth .gt_from_md> :first-child { margin-top: 0; }
- #dldkllatth .gt_from_md> :last-child { margin-bottom: 0; }
- #dldkllatth .gt_row { padding-top: 8px; padding-bottom: 8px; padding-left: 5px; padding-right: 5px; margin: 10px; border-top-style: solid; border-top-width: 1px; border-top-color: #D3D3D3; border-left-style: none; border-left-width: 1px; border-left-color: #D3D3D3; border-right-style: none; border-right-width: 1px; border-right-color: #D3D3D3; vertical-align: middle; overflow-x: hidden; }
- #dldkllatth .gt_stub { color: #333333; background-color: #FFFFFF; font-size: 100%; font-weight: initial; text-transform: inherit; border-right-style: solid; border-right-width: 2px; border-right-color: #D3D3D3; padding-left: 5px; padding-right: 5px; }
- #dldkllatth .gt_stub_row_group { color: #333333; background-color: #FFFFFF; font-size: 100%; font-weight: initial; text-transform: inherit; border-right-style: solid; border-right-width: 2px; border-right-color: #D3D3D3; padding-left: 5px; padding-right: 5px; vertical-align: top; }
- #dldkllatth .gt_row_group_first td { border-top-width: 2px; }
- #dldkllatth .gt_row_group_first th { border-top-width: 2px; }
- #dldkllatth .gt_striped { background-color: rgba(128,128,128,0.05); }
- #dldkllatth .gt_table_body { border-top-style: solid; border-top-width: 2px; border-top-color: #D3D3D3; border-bottom-style: solid; border-bottom-width: 2px; border-bottom-color: #D3D3D3; }
- #dldkllatth .gt_sourcenotes { color: #333333; background-color: #FFFFFF; border-bottom-style: none; border-bottom-width: 2px; border-bottom-color: #D3D3D3; border-left-style: none; border-left-width: 2px; border-left-color: #D3D3D3; border-right-style: none; border-right-width: 2px; border-right-color: #D3D3D3; }
- #dldkllatth .gt_sourcenote { font-size: 90%; padding-top: 4px; padding-bottom: 4px; padding-left: 5px; padding-right: 5px; text-align: left; }
- #dldkllatth .gt_left { text-align: left; }
- #dldkllatth .gt_center { text-align: center; }
- #dldkllatth .gt_right { text-align: right; font-variant-numeric: tabular-nums; }
- #dldkllatth .gt_font_normal { font-weight: normal; }
- #dldkllatth .gt_font_bold { font-weight: bold; }
- #dldkllatth .gt_font_italic { font-style: italic; }
- #dldkllatth .gt_super { font-size: 65%; }
- #dldkllatth .gt_footnote_marks { font-size: 75%; vertical-align: 0.4em; position: initial; }
- #dldkllatth .gt_asterisk { font-size: 100%; vertical-align: 0; }
+#rqwyzhizzt p { margin: 0; padding: 0; }
+ #rqwyzhizzt .gt_table { display: table; border-collapse: collapse; line-height: normal; margin-left: auto; margin-right: auto; color: #333333; font-size: 16px; font-weight: normal; font-style: normal; background-color: #FFFFFF; width: auto; border-top-style: solid; border-top-width: 2px; border-top-color: #A8A8A8; border-right-style: none; border-right-width: 2px; border-right-color: #D3D3D3; border-bottom-style: solid; border-bottom-width: 2px; border-bottom-color: #A8A8A8; border-left-style: none; border-left-width: 2px; border-left-color: #D3D3D3; }
+ #rqwyzhizzt .gt_caption { padding-top: 4px; padding-bottom: 4px; }
+ #rqwyzhizzt .gt_title { color: #333333; font-size: 125%; font-weight: initial; padding-top: 4px; padding-bottom: 4px; padding-left: 5px; padding-right: 5px; border-bottom-color: #FFFFFF; border-bottom-width: 0; }
+ #rqwyzhizzt .gt_subtitle { color: #333333; font-size: 85%; font-weight: initial; padding-top: 3px; padding-bottom: 5px; padding-left: 5px; padding-right: 5px; border-top-color: #FFFFFF; border-top-width: 0; }
+ #rqwyzhizzt .gt_heading { background-color: #FFFFFF; text-align: center; border-bottom-color: #FFFFFF; border-left-style: none; border-left-width: 1px; border-left-color: #D3D3D3; border-right-style: none; border-right-width: 1px; border-right-color: #D3D3D3; }
+ #rqwyzhizzt .gt_bottom_border { border-bottom-style: solid; border-bottom-width: 2px; border-bottom-color: #D3D3D3; }
+ #rqwyzhizzt .gt_col_headings { border-top-style: solid; border-top-width: 2px; border-top-color: #D3D3D3; border-bottom-style: solid; border-bottom-width: 2px; border-bottom-color: #D3D3D3; border-left-style: none; border-left-width: 1px; border-left-color: #D3D3D3; border-right-style: none; border-right-width: 1px; border-right-color: #D3D3D3; }
+ #rqwyzhizzt .gt_col_heading { color: #333333; background-color: #FFFFFF; font-size: 100%; font-weight: normal; text-transform: inherit; border-left-style: none; border-left-width: 1px; border-left-color: #D3D3D3; border-right-style: none; border-right-width: 1px; border-right-color: #D3D3D3; vertical-align: bottom; padding-top: 5px; padding-bottom: 5px; padding-left: 5px; padding-right: 5px; overflow-x: hidden; }
+ #rqwyzhizzt .gt_column_spanner_outer { color: #333333; background-color: #FFFFFF; font-size: 100%; font-weight: normal; text-transform: inherit; padding-top: 0; padding-bottom: 0; padding-left: 4px; padding-right: 4px; }
+ #rqwyzhizzt .gt_column_spanner_outer:first-child { padding-left: 0; }
+ #rqwyzhizzt .gt_column_spanner_outer:last-child { padding-right: 0; }
+ #rqwyzhizzt .gt_column_spanner { border-bottom-style: solid; border-bottom-width: 2px; border-bottom-color: #D3D3D3; vertical-align: bottom; padding-top: 5px; padding-bottom: 5px; overflow-x: hidden; display: inline-block; width: 100%; }
+ #rqwyzhizzt .gt_spanner_row { border-bottom-style: hidden; }
+ #rqwyzhizzt .gt_group_heading { padding-top: 8px; padding-bottom: 8px; padding-left: 5px; padding-right: 5px; color: #333333; background-color: #FFFFFF; font-size: 100%; font-weight: initial; text-transform: inherit; border-top-style: solid; border-top-width: 2px; border-top-color: #D3D3D3; border-bottom-style: solid; border-bottom-width: 2px; border-bottom-color: #D3D3D3; border-left-style: none; border-left-width: 1px; border-left-color: #D3D3D3; border-right-style: none; border-right-width: 1px; border-right-color: #D3D3D3; vertical-align: middle; text-align: left; }
+ #rqwyzhizzt .gt_empty_group_heading { padding: 0.5px; color: #333333; background-color: #FFFFFF; font-size: 100%; font-weight: initial; border-top-style: solid; border-top-width: 2px; border-top-color: #D3D3D3; border-bottom-style: solid; border-bottom-width: 2px; border-bottom-color: #D3D3D3; vertical-align: middle; }
+ #rqwyzhizzt .gt_from_md> :first-child { margin-top: 0; }
+ #rqwyzhizzt .gt_from_md> :last-child { margin-bottom: 0; }
+ #rqwyzhizzt .gt_row { padding-top: 8px; padding-bottom: 8px; padding-left: 5px; padding-right: 5px; margin: 10px; border-top-style: solid; border-top-width: 1px; border-top-color: #D3D3D3; border-left-style: none; border-left-width: 1px; border-left-color: #D3D3D3; border-right-style: none; border-right-width: 1px; border-right-color: #D3D3D3; vertical-align: middle; overflow-x: hidden; }
+ #rqwyzhizzt .gt_stub { color: #333333; background-color: #FFFFFF; font-size: 100%; font-weight: initial; text-transform: inherit; border-right-style: solid; border-right-width: 2px; border-right-color: #D3D3D3; padding-left: 5px; padding-right: 5px; }
+ #rqwyzhizzt .gt_stub_row_group { color: #333333; background-color: #FFFFFF; font-size: 100%; font-weight: initial; text-transform: inherit; border-right-style: solid; border-right-width: 2px; border-right-color: #D3D3D3; padding-left: 5px; padding-right: 5px; vertical-align: top; }
+ #rqwyzhizzt .gt_row_group_first td { border-top-width: 2px; }
+ #rqwyzhizzt .gt_row_group_first th { border-top-width: 2px; }
+ #rqwyzhizzt .gt_striped { background-color: rgba(128,128,128,0.05); }
+ #rqwyzhizzt .gt_table_body { border-top-style: solid; border-top-width: 2px; border-top-color: #D3D3D3; border-bottom-style: solid; border-bottom-width: 2px; border-bottom-color: #D3D3D3; }
+ #rqwyzhizzt .gt_sourcenotes { color: #333333; background-color: #FFFFFF; border-bottom-style: none; border-bottom-width: 2px; border-bottom-color: #D3D3D3; border-left-style: none; border-left-width: 2px; border-left-color: #D3D3D3; border-right-style: none; border-right-width: 2px; border-right-color: #D3D3D3; }
+ #rqwyzhizzt .gt_sourcenote { font-size: 90%; padding-top: 4px; padding-bottom: 4px; padding-left: 5px; padding-right: 5px; text-align: left; }
+ #rqwyzhizzt .gt_left { text-align: left; }
+ #rqwyzhizzt .gt_center { text-align: center; }
+ #rqwyzhizzt .gt_right { text-align: right; font-variant-numeric: tabular-nums; }
+ #rqwyzhizzt .gt_font_normal { font-weight: normal; }
+ #rqwyzhizzt .gt_font_bold { font-weight: bold; }
+ #rqwyzhizzt .gt_font_italic { font-style: italic; }
+ #rqwyzhizzt .gt_super { font-size: 65%; }
+ #rqwyzhizzt .gt_footnote_marks { font-size: 75%; vertical-align: 0.4em; position: initial; }
+ #rqwyzhizzt .gt_asterisk { font-size: 100%; vertical-align: 0; }
  
 </style>
 <table class="gt_table" data-quarto-disable-processing="false" data-quarto-bootstrap="false">
@@ -1659,7 +1727,7 @@ Note
 </main>
 <!-- /main column -->
 <script type="application/vnd.jupyter.widget-state+json">
-{"state":{"4426452d47c2481983b3d623fd514f29":{"model_module":"@jupyter-widgets/base","model_module_version":"2.0.0","model_name":"LayoutModel","state":{"_model_module":"@jupyter-widgets/base","_model_module_version":"2.0.0","_model_name":"LayoutModel","_view_count":null,"_view_module":"@jupyter-widgets/base","_view_module_version":"2.0.0","_view_name":"LayoutView","align_content":null,"align_items":null,"align_self":null,"border_bottom":null,"border_left":null,"border_right":null,"border_top":null,"bottom":null,"display":null,"flex":null,"flex_flow":null,"grid_area":null,"grid_auto_columns":null,"grid_auto_flow":null,"grid_auto_rows":null,"grid_column":null,"grid_gap":null,"grid_row":null,"grid_template_areas":null,"grid_template_columns":null,"grid_template_rows":null,"height":null,"justify_content":null,"justify_items":null,"left":null,"margin":null,"max_height":null,"max_width":null,"min_height":null,"min_width":null,"object_fit":null,"object_position":null,"order":null,"overflow":null,"padding":null,"right":null,"top":null,"visibility":null,"width":null}},"5695bfe3adbe4928b2a97a35039b77fb":{"model_module":"@jupyter-widgets/output","model_module_version":"1.0.0","model_name":"OutputModel","state":{"_dom_classes":[],"_model_module":"@jupyter-widgets/output","_model_module_version":"1.0.0","_model_name":"OutputModel","_view_count":null,"_view_module":"@jupyter-widgets/output","_view_module_version":"1.0.0","_view_name":"OutputView","layout":"IPY_MODEL_4426452d47c2481983b3d623fd514f29","msg_id":"","outputs":[{"data":{"text/html":"<pre style=\"white-space:pre;overflow-x:auto;line-height:normal;font-family:Menlo,'DejaVu Sans Mono',consolas,'Courier New',monospace\">                                                                                                                   \n <span style=\"font-weight: bold\"> Progress                  </span> <span style=\"font-weight: bold\"> Draws </span> <span style=\"font-weight: bold\"> Divergences </span> <span style=\"font-weight: bold\"> Step size </span> <span style=\"font-weight: bold\"> Grad evals </span> <span style=\"font-weight: bold\"> Sampling Speed </span> <span style=\"font-weight: bold\"> Elapsed </span> <span style=\"font-weight: bold\"> Remaining </span> \n ───────────────────────────────────────────────────────────────────────────────────────────────────────────────── \n  <span style=\"color: #1f77b4; text-decoration-color: #1f77b4\">━━━━━━━━━━━━━━━━━━━━━━━━━</span>   2000    0             0.23        15           87.71 draws/s    0:00:22   0:00:00    \n  <span style=\"color: #1f77b4; text-decoration-color: #1f77b4\">━━━━━━━━━━━━━━━━━━━━━━━━━</span>   2000    0             0.15        15           43.31 draws/s    0:00:46   0:00:00    \n  <span style=\"color: #1f77b4; text-decoration-color: #1f77b4\">━━━━━━━━━━━━━━━━━━━━━━━━━</span>   2000    0             0.27        15           28.91 draws/s    0:01:09   0:00:00    \n  <span style=\"color: #1f77b4; text-decoration-color: #1f77b4\">━━━━━━━━━━━━━━━━━━━━━━━━━</span>   2000    0             0.22        15           21.93 draws/s    0:01:31   0:00:00    \n                                                                                                                   \n</pre>\n","text/plain":"                                                                                                                   \n \u001b[1m \u001b[0m\u001b[1mProgress                 \u001b[0m\u001b[1m \u001b[0m \u001b[1m \u001b[0m\u001b[1mDraws\u001b[0m\u001b[1m \u001b[0m \u001b[1m \u001b[0m\u001b[1mDivergences\u001b[0m\u001b[1m \u001b[0m \u001b[1m \u001b[0m\u001b[1mStep size\u001b[0m\u001b[1m \u001b[0m \u001b[1m \u001b[0m\u001b[1mGrad evals\u001b[0m\u001b[1m \u001b[0m \u001b[1m \u001b[0m\u001b[1mSampling Speed\u001b[0m\u001b[1m \u001b[0m \u001b[1m \u001b[0m\u001b[1mElapsed\u001b[0m\u001b[1m \u001b[0m \u001b[1m \u001b[0m\u001b[1mRemaining\u001b[0m\u001b[1m \u001b[0m \n ───────────────────────────────────────────────────────────────────────────────────────────────────────────────── \n  \u001b[38;2;31;119;180m━━━━━━━━━━━━━━━━━━━━━━━━━\u001b[0m   2000    0             0.23        15           87.71 draws/s    0:00:22   0:00:00    \n  \u001b[38;2;31;119;180m━━━━━━━━━━━━━━━━━━━━━━━━━\u001b[0m   2000    0             0.15        15           43.31 draws/s    0:00:46   0:00:00    \n  \u001b[38;2;31;119;180m━━━━━━━━━━━━━━━━━━━━━━━━━\u001b[0m   2000    0             0.27        15           28.91 draws/s    0:01:09   0:00:00    \n  \u001b[38;2;31;119;180m━━━━━━━━━━━━━━━━━━━━━━━━━\u001b[0m   2000    0             0.22        15           21.93 draws/s    0:01:31   0:00:00    \n                                                                                                                   \n"},"metadata":{},"output_type":"display_data"}],"tabbable":null,"tooltip":null}}},"version_major":2,"version_minor":0}
+{"state":{"161e67f178194e28bcb439e17b901d6d":{"model_module":"@jupyter-widgets/output","model_module_version":"1.0.0","model_name":"OutputModel","state":{"_dom_classes":[],"_model_module":"@jupyter-widgets/output","_model_module_version":"1.0.0","_model_name":"OutputModel","_view_count":null,"_view_module":"@jupyter-widgets/output","_view_module_version":"1.0.0","_view_name":"OutputView","layout":"IPY_MODEL_52d98fe127064d378f8e5a05d601836c","msg_id":"","outputs":[{"data":{"text/html":"<pre style=\"white-space:pre;overflow-x:auto;line-height:normal;font-family:Menlo,'DejaVu Sans Mono',consolas,'Courier New',monospace\">                                                                                                                   \n <span style=\"font-weight: bold\"> Progress                  </span> <span style=\"font-weight: bold\"> Draws </span> <span style=\"font-weight: bold\"> Divergences </span> <span style=\"font-weight: bold\"> Step size </span> <span style=\"font-weight: bold\"> Grad evals </span> <span style=\"font-weight: bold\"> Sampling Speed </span> <span style=\"font-weight: bold\"> Elapsed </span> <span style=\"font-weight: bold\"> Remaining </span> \n ───────────────────────────────────────────────────────────────────────────────────────────────────────────────── \n  <span style=\"color: #1f77b4; text-decoration-color: #1f77b4\">━━━━━━━━━━━━━━━━━━━━━━━━━</span>   2000    0             0.23        15           104.60 draws/s   0:00:19   0:00:00    \n  <span style=\"color: #1f77b4; text-decoration-color: #1f77b4\">━━━━━━━━━━━━━━━━━━━━━━━━━</span>   2000    0             0.15        15           51.47 draws/s    0:00:38   0:00:00    \n  <span style=\"color: #1f77b4; text-decoration-color: #1f77b4\">━━━━━━━━━━━━━━━━━━━━━━━━━</span>   2000    0             0.27        15           34.23 draws/s    0:00:58   0:00:00    \n  <span style=\"color: #1f77b4; text-decoration-color: #1f77b4\">━━━━━━━━━━━━━━━━━━━━━━━━━</span>   2000    0             0.22        15           25.89 draws/s    0:01:17   0:00:00    \n                                                                                                                   \n</pre>\n","text/plain":"                                                                                                                   \n \u001b[1m \u001b[0m\u001b[1mProgress                 \u001b[0m\u001b[1m \u001b[0m \u001b[1m \u001b[0m\u001b[1mDraws\u001b[0m\u001b[1m \u001b[0m \u001b[1m \u001b[0m\u001b[1mDivergences\u001b[0m\u001b[1m \u001b[0m \u001b[1m \u001b[0m\u001b[1mStep size\u001b[0m\u001b[1m \u001b[0m \u001b[1m \u001b[0m\u001b[1mGrad evals\u001b[0m\u001b[1m \u001b[0m \u001b[1m \u001b[0m\u001b[1mSampling Speed\u001b[0m\u001b[1m \u001b[0m \u001b[1m \u001b[0m\u001b[1mElapsed\u001b[0m\u001b[1m \u001b[0m \u001b[1m \u001b[0m\u001b[1mRemaining\u001b[0m\u001b[1m \u001b[0m \n ───────────────────────────────────────────────────────────────────────────────────────────────────────────────── \n  \u001b[38;2;31;119;180m━━━━━━━━━━━━━━━━━━━━━━━━━\u001b[0m   2000    0             0.23        15           104.60 draws/s   0:00:19   0:00:00    \n  \u001b[38;2;31;119;180m━━━━━━━━━━━━━━━━━━━━━━━━━\u001b[0m   2000    0             0.15        15           51.47 draws/s    0:00:38   0:00:00    \n  \u001b[38;2;31;119;180m━━━━━━━━━━━━━━━━━━━━━━━━━\u001b[0m   2000    0             0.27        15           34.23 draws/s    0:00:58   0:00:00    \n  \u001b[38;2;31;119;180m━━━━━━━━━━━━━━━━━━━━━━━━━\u001b[0m   2000    0             0.22        15           25.89 draws/s    0:01:17   0:00:00    \n                                                                                                                   \n"},"metadata":{},"output_type":"display_data"}],"tabbable":null,"tooltip":null}},"52d98fe127064d378f8e5a05d601836c":{"model_module":"@jupyter-widgets/base","model_module_version":"2.0.0","model_name":"LayoutModel","state":{"_model_module":"@jupyter-widgets/base","_model_module_version":"2.0.0","_model_name":"LayoutModel","_view_count":null,"_view_module":"@jupyter-widgets/base","_view_module_version":"2.0.0","_view_name":"LayoutView","align_content":null,"align_items":null,"align_self":null,"border_bottom":null,"border_left":null,"border_right":null,"border_top":null,"bottom":null,"display":null,"flex":null,"flex_flow":null,"grid_area":null,"grid_auto_columns":null,"grid_auto_flow":null,"grid_auto_rows":null,"grid_column":null,"grid_gap":null,"grid_row":null,"grid_template_areas":null,"grid_template_columns":null,"grid_template_rows":null,"height":null,"justify_content":null,"justify_items":null,"left":null,"margin":null,"max_height":null,"max_width":null,"min_height":null,"min_width":null,"object_fit":null,"object_position":null,"order":null,"overflow":null,"padding":null,"right":null,"top":null,"visibility":null,"width":null}}},"version_major":2,"version_minor":0}
 </script>
 <script id="quarto-html-after-body" type="application/javascript">
 window.document.addEventListener("DOMContentLoaded", function (event) {
