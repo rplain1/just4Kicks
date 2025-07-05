@@ -1,11 +1,14 @@
 ---
 engine: jupyter
+format:
+  html:
+    self-contained: true
 ---
 
 # Executive Summary
 ---
 
-**Problem**: Evaluating NFL kickers accurately presents a significant challange due to the low sample sizes and varying contexts of field goal attempts, and is made even more challenging to do midseason. Tradditional metrics often struggle to provide insights into true player skill when sample sizes are limited.
+**Problem**: Evaluating NFL kickers accurately presents a significant challange due to the low sample sizes and varying contexts of field goal attempts, and is even more challenging to do midseason. Tradditional metrics often struggle to provide insights into true player skill when sample sizes are limited.
 
 **Solution**: This is a proposed Bayesian hierarchical model designed to evaluate the performance of NFL kickers. The model accounts for both individual player skill, and the non-linear relationship between kick distance and the probability of success. By estimating unique player effects and then applying these predictions to a standardized set of simulated kicks (25-60 yards), I derive a contextualized and stable evaluation metric.
 
@@ -30,7 +33,6 @@ Any code not directly related to the model or derived metrics, such as plotting 
 All necessary library imports and custom utility functions for data preparation, modeling, and plotting are defined below:
 
 
-
 ```{python}
 # | code-fold: true
 import polars as pl
@@ -41,6 +43,7 @@ import arviz as az
 import pandas as pd
 from plotnine import *
 from pathlib import Path
+import matplotlib.pyplot as plt
 
 import polars.selectors as cs
 
@@ -51,6 +54,9 @@ palette = ["#001e42", "#535c78", "#9fa3b3", "#f1f1f1", "#ffbea4", "#ff895a", "#f
 
 
 def player_index(df: pl.DataFrame) -> pl.DataFrame:
+    """
+    Unique player names and id's
+    """
     return (
         df[["player_id", "player_name"]]
         .unique()
@@ -88,7 +94,15 @@ def prep_dataset() -> pl.DataFrame:
     return df
 
 
-def make_pymc_data(df):
+def make_pymc_data(df)-> dict:
+    """
+    The pymc model will use 2 arrays passed into it, along with coordinates. This
+    function creates the dictionary of data needed to pass into the model. The contexts
+    of the spline are also captured to use on new prediction data.
+
+    Returns:
+        dict: distance, player info, spline info
+    """
     spline_basis = dmatrix(
         "bs(distance_std, df=3, include_intercept = False) - 1",  # removed include_intercept=True) - 1",
         data=df.to_pandas(),
@@ -105,7 +119,13 @@ def make_pymc_data(df):
     }
 
 
-def get_jt(df):
+def get_jt(df) -> int:
+    """
+    Plotting helper function to highlight Justin Tucker
+
+    Returns:
+        int: index of Justin Tucker
+    """
     shape = df.shape[0]
     var = df.with_row_index().filter(pl.col("player_name") == "Justin Tucker")["index"][
         0
@@ -135,14 +155,13 @@ def pointrange_data(
     if isinstance(df, pd.DataFrame):
         df = pl.from_pandas(df)
 
-    # Custom function to extract HDI bounds
     def hdi_bounds(values, prob=0.9):
         hdi_result = az.hdi(values.to_numpy(), hdi_prob=prob)
-        return hdi_result[0], hdi_result[1]  # lower, upper
+        return hdi_result[0], hdi_result[1]
 
     def hdi_bounds_50(values):
         hdi_result = az.hdi(values.to_numpy(), hdi_prob=0.5)
-        return hdi_result[0], hdi_result[1]  # lower, upper
+        return hdi_result[0], hdi_result[1]
 
     data = (
         df.group_by(group)
@@ -186,8 +205,22 @@ def title_name(df: pl.DataFrame | pd.DataFrame):
 
 
 def ggpointinterval(
-    df: pl.DataFrame, title: str, axis_label: str, figure_size=(6, 8), axis_text_size=10
-):
+    df: pl.DataFrame, title: str, axis_label: str, figure_size:tuple=(6, 8), axis_text_size:int=10
+) -> ggplot:
+    """
+    Plot of the distributuion of a metric and multiple credible intervals for
+    each player.
+
+    Args:
+        df: (pl.DataFrame)
+        title: (str) title of the plot
+        axis_label: (str) text of the evaluation metric
+        figure_size: (tuple, optional) figure size of plot
+        axis_text_size: (int, optional) text size of plot
+
+    Returns:
+        plotnine.ggplot
+    """
     df_plot = pointrange_data(df)
     df_plot = title_name(df_plot)
     return (
@@ -220,19 +253,17 @@ def ggpointinterval(
 
 ### Data
 
+The data contains kicks for multiple seasons, where each kick event is a row. Each kick has a possible of 3 outcomes: `Made`, `Missed`, `Blocked`. The field goals that were `Made` are counted as a success for modeling purposes.
+
 
 ```{python}
 df = prep_dataset()
 df.head()
 ```
 
-The data contains kicks for multiple seasons, where each kick event is a row. Each kick has a possible of 3 outcomes:
+#### Success Rate
 
-- Made
-- Missed
-- Blocked
-
-
+The plot below shows the success rate by distance.
 
 ```{python}
 #| code-fold: true
@@ -252,27 +283,32 @@ df_plot = df.group_by("distance").agg(pl.col("success").sum() / pl.count("succes
 
 ```
 
-There is supporting evidence of a non-linear relationship between kick distance and success rate, as shown in the plot below. Using splines in the model will allow us to estimate this relationship much more realistically than a quadratic model.
+#### Features
 
-Additionally, players have varying skill levels that traditional analytics cannot fully capture. The sparse data and hierarchical structure of the underlying process makes this well-suited for hierarchical modeling methods.
+As expected, an increase in distance causes the success rate to drop. After roughly 45 yards, success rates decline at a steeper rate. Using splines in the model will allow us to fit this non-linear curve and estimate the relationship more realistically than a quadratic model.
 
-I will begin by building a simple model incorporating both kick distance (via splines) and individual player effects as primary features.
+Intrinsically captured in the data is the fact that players have varying skill levels, something traditional analytics cannot fully account for. The sparse data and hierarchical structure of the underlying process make this well suited for hierarchical modeling methods.
 
-### Model Setup, Priors & Justification
+I will begin by building a simple but effective model, incorporating both kick distance (via splines) and individual player effects as primary features.
 
-With the individual observed kicks, the scope of this analysis will be to estimate individual player's probability of success. The following model was used:
+### Model
+
+#### Model Definition
+
+With the individual observed kicks, the scope of this analysis will be to estimate an individual player's probability of success. The following model was used:
 
 $$
 \begin{aligned}
 y_i &\sim \operatorname{Bernoulli}(p_i) \\
-\operatorname{logit}(p_i) &= \alpha_0 + \alpha_{j[i]} + \sum_{k=1}^K B_k(x_i) \, \beta_k \\
-\alpha_0 &\sim \operatorname{Normal}(1, 1) \\ % Global fixed intercept
-\alpha_j &\sim \operatorname{Normal}(0, \sigma_\alpha) \\
-\sigma_\alpha &\sim \operatorname{HalfNormal}(0.5) \\
+\operatorname{logit}(p_i) &= \alpha + \theta_{j[i]} + \sum_{k=1}^K B_k(x_i) \, \beta_k \\
+\alpha &\sim \operatorname{Normal}(1, 1) \\ % Global fixed intercept
+\theta_j &\sim \operatorname{Normal}(0, \sigma) \\
+\sigma &\sim \operatorname{HalfNormal}(0.5) \\
 \beta_k &\sim \operatorname{Student-t}(3, 0, 1) \quad \text{for } k = 1, \dots, K \\
 \end{aligned}
 $$
 
+Overview:
 - Bernoulli likelihood for the binary outcome
 - Partially pooled intercepts by player
 - The distribution of player effects share the same sigma parameter
@@ -280,13 +316,36 @@ $$
 
 This model generates player-specific intercepts that adapt based on individual performance and data availability. Players with more observations will have their estimates pulled toward their own performance, while those with limited data will remain closer to the population prior. The shared variance across all players creates partial pooling, where information is borrowed between players to improve estimates for those with limited data.
 
+::: {.callout-tip collapse="true" title="Non-centered Parameterization"}
+The model outlined above is used, but implemented using the **non-centered parameterization** technique. This approach is mathematically equivalent to the centered formulation, but it allows for sampling geometries that are less correlated. This typically improves convergence and sampling efficiency in hierarchical models.
 
-### Priors
+The key difference lies in how the player's offset from the mean, $\tilde{\theta}_j$, and the group-level standard deviation, $\sigma$, are sampled independently. This decouples their dependency, resulting in a posterior geometry that is easier for the MCMC algorithms to explore.
 
-Student-t priors were chosen for their heavier tails, providing more robust estimates to handle outliers or less certain prior knowledge. This is particularly useful for individual player effects.
+$$
+\begin{aligned}
+y_i &\sim \operatorname{Bernoulli}(p_i) \\
+\operatorname{logit}(p_i) &= \alpha + \theta_{j[i]} + \sum_{k=1}^K B_k(x_i) \, \beta_k \\
+\alpha &\sim \operatorname{Normal}(1, 1) \\ % Global fixed intercept
+\theta_j &= \tilde{\theta}_j \cdot \sigma \\
+\tilde{\theta}_j &\sim \operatorname{Normal}(0, 1) \\
+\sigma &\sim \operatorname{HalfNormal}(0.5) \\
+\beta_k &\sim \operatorname{Student\text{-}t}(3, 0, 1) \quad \text{for } k = 1, \dots, K \\
+\end{aligned}
+$$
+
+
+:::
+
+
+#### Prior Justification
 
 One of the strengths of Bayesian modeling is the ability to incorporate domain knowledge through prior distributions. For instance, we expect field goals from typical distances — such as 30 yards — to be successful more often than not. To reflect this, I placed a prior on the intercept of $Normal(1, 1)$, which corresponds to a probability greater than 50% (with the use of the logit link function).
 
+Player effects are modeled with a normal distribution, a common choice in hierarchical models - particularly with non-centered parameterization. This prior is skeptical of extreme outliers and assumes the average player is roughly replacement level.
+
+For the spline terms, I used a Student-t prior. This allows for heavier tails, enabling the model to capture more extreme (but plausible) effects of distance on field goal success. A minimal number of knots was used in the spline to provide flexibility while reducing the risk of overfitting.
+
+#### Model Configuration
 
 ```{python}
 data = make_pymc_data(df)
@@ -295,10 +354,7 @@ COORDS = {
     "splines": data["spline_shape"],
     "player_id": data["player_cat"],
 }
-```
 
-
-```{python}
 with pm.Model(coords=COORDS) as model:
     # -------------- DATA -------------------------------
     spline_data = pm.Data("spline_data", data["spline_array"])
@@ -321,7 +377,7 @@ with pm.Model(coords=COORDS) as model:
     mu = alpha + player_effect[player_idx] + spline_contrib
     p = pm.Deterministic("p", pm.math.invlogit(mu))
 
-    # liklihood
+    # likelihood
     pm.Bernoulli("y_rep", p=p, observed=df["success"].to_numpy())
 
     # -------------- GENERATED QUANTITIES ----------------
@@ -334,11 +390,14 @@ with pm.Model(coords=COORDS) as model:
 pm.model_to_graphviz(model)
 ```
 
-The plot shows how each component contributes to the model. The probability `p` is the parameter of interest. The spline data, spline weights, and global intercept contribute to a probability baseline that will later be used to compare player effects.
+The model graph above shows how each component contributes to the model. The `spline_data` and `player_idx` filled blocks represent data elements. The unfilled ovals, which are parameters, feed into various deterministic nodes, such as `1|player_id`, `p_baseline` or `p`. Because this is a generative model, it can simulate different quantities given different input data.
+
+The parameter `p` represents the probability of a successful field goal and is used in downstream metrics. Once the model is fit and the parameters are estimated, the `spline_data`, `spline_weights`, and global intercept `alpha` combine to produce a probability baseline, `p_baseline`, which will later be used to assess player effects.
+
+
+#### Prior Predictive Checks
 
 After specifying the model structure and priors, a diagnostic tool in prior predictive checks help assess whether the model generates realistic values. In this case, since field goals are made more often than missed, the prior predictive distribution should reflect more success.
-
-#### Prior distributions
 
 
 ```{python}
@@ -389,44 +448,51 @@ df_prior = pl.from_pandas(
 
 The results from the prior predictive check suggest that the priors lead to outcomes consistent with the expectation, indicating that the model has a plausible data-generating process.
 
-#### Fitting the model
+#### Model Fit
 
-The model fits by sampling the posterior distribution of the paramters. The following plot visualizes the posterior distributions of parameters, as well as rank bars for the chains. A uniform distribution indicates a good mixing of the chains.
+The model is fit by sampling from the posterior distribution of the parameters. The plot below visualizes these posterior distributions along with rank bars for each chain. A roughly uniform rank distribution indicates good mixing and suggests that the chains have converged.
 
 ```{python}
-
-if Path('models/idata.nc').exists():
-    idata = az.from_netcdf('models/idata.nc')
+if Path("models/idata.nc").exists():
+    idata = az.from_netcdf("models/idata.nc")
 
 else:
     with model:
         idata.extend(pm.sample(cores=1, chains=4, random_seed=527))
-        az.to_netcdf(idata, 'models/idata.nc')
+        az.to_netcdf(idata, "models/idata.nc")
 
-params = ['alpha', 'w', '1|player_id', 'sigma']
+params = ["alpha", "w", "1|player_id", "sigma"]
 
-az.plot_trace(idata, var_names=params, kind="rank_bars");
+_ = az.plot_trace(idata, var_names=params, kind="rank_bars")
+plt.show()
 ```
 
-The Markov Chain Monte Carlo (MCMC) algorithm used to sample modern baye. While these diagnostics don't account for causality implications or domain-specific modeling checks, they help to ensure the MCMC algorithm is working as expected. All chains converged without divergent transitions, and effective sample sizes are adequate.
 
+#### Diagnostics
+
+The Markov Chain Monte Carlo (MCMC) algorithm used to fit the model comes with its own set of diagnostic criteria. While these diagnostics don’t address causal assumptions or domain-specific model validity, they ensure that the MCMC algorithm is functioning properly.
 
 ```{python}
 az.summary(idata, var_names=params)
 ```
 
-The following table summarizes these diagnostics across the model parameters. The distribution of bulk and tail ESS values, along with r_hat, to ensure all parameters were sampled adequately and that the posterior inferences are trustworthy.
+The following table summarizes these diagnostics across the model parameters. The distribution of bulk and tail ESS values, along with $\hat{R}$, to ensure all parameters were sampled adequately and that the posterior inferences are trustworthy.
+
+- Bulk ESS (Effective Sample Size) estimates how many independent samples are effectively drawn from the bulk of the posterior distribution. Higher values indicate more reliable estimates.
+- Tail ESS focuses on the tails of the distribution, which are important for accurately characterizing uncertainty.
+- $\hat{R}$ (R-hat) is a convergence diagnostic comparing variances in chains. Values close to 1 (typically below 1.01) indicate that the chains have mixed well and converged.
 
 ```{python}
 az.summary(idata, var_names=params)[["ess_bulk", "ess_tail", "r_hat"]].describe(
     percentiles=[0.05, 0.5, 0.95]
-)
+).round()
 ```
+
+In this case, all chains converged without divergent transitions, and the effective sample sizes are sufficient.
 
 #### Assesing Fit
 
 The plot below shows that the model produces predictions consistent with the observed data, suggesting that the model's assumptions and structure are appropriate for summarizing performance.
-
 
 ```{python}
 with model:
@@ -437,7 +503,7 @@ with model:
 ```{python}
 # | code-fold: true
 df_ppd = pl.from_pandas(
-    df_ppd.posterior_predictive.sel(draw=slice(0, 10))
+    df_ppd.posterior_predictive.sel(draw=slice(0, 100))
     .stack(sample=["chain", "draw"])
     .to_dataframe()["y_rep"]
     .reset_index()
@@ -476,7 +542,7 @@ df_ppd = pl.from_pandas(
 )
 ```
 
-### Parameters
+### Posterior Distributions
 
 #### Player Effects
 
@@ -493,7 +559,7 @@ player_index(df).join(
 ).select(pl.exclude(["player_idx", "index"])).with_columns(pl.col('player_name').cast(pl.Utf8).str.to_titlecase())
 ```
 
-While these individual player effects help understand the model's insights into each kicker's baseline skill, their direct interpretation as raw coefficients can be challenging to communicate to non-technical stakeholders as an intuitive standalone evaluation metric. This is why I will move towards the Simulated Field Goal Over Expected (FGOE), which translates these effects into a more relatable and actionable rating of expected performance on a standardized set of kicks.
+While these individual player effects help understand the model's insights into each kicker's baseline skill, their direct interpretation as raw coefficients can be challenging to communicate to non-technical stakeholders a standalone evaluation metric. This is why I will move towards the Simulated Field Goal Over Expected (FGOE), which translates these effects into a more relatable and actionable rating of expected performance on a standardized set of kicks.
 
 #### Spline
 
@@ -582,7 +648,7 @@ df_spline = create_spline_table()
 
 #### Aggregated spline
 
-Finally, they can be aggregated together to produce the estimated effect of distance on FG success.
+Finally, the individual spline components can be aggregated to estimate the overall effect of distance on field goal success.
 
 ```{python}
 # | code-fold: true
@@ -606,6 +672,7 @@ df_spline_agg = (
 )
 ```
 
+Bayesian modeling allows us to quantify the uncertainty in the relationship between distance and the probability of a successful field goal. At shorter distances, the effect is more stable and tightly estimated. However, at longer distances there is noticeably more uncertainty in the predicted success rate.
 
 
 ## Field Goals Over Expected
@@ -616,9 +683,9 @@ What I outlined in my application was establishing at minimum a Field Goal Over 
 
 #### 2018 results
 
-To calculate a traditional FGOE, the average expected probabilities accounting for distance and removing the player grouping effects can be used. FGOE is simply the observed event minus those expected probabilites. This can be done with any point estimate, but with a Bayesian methods we have a distribution of values to use.
+To calculate a traditional FGOE, the average expected probabilities accounting for distance and removing the player grouping effects can be used. FGOE is simply the observed event minus those expected probabilites. This can be done with any point estimate, but with a Bayesian methods we again have a distribution of values to use.
 
-##### Utility Functions:
+###### Utility Functions:
 
 ```{python}
 # | code-fold: true
@@ -724,6 +791,8 @@ def create_fgoe_table(df: pl.DataFrame) -> pl.DataFrame:
 
 ##### 2018 observed data
 
+For each kick in 2018, we can aggregate each players traditional FGOE to evaluate their performance during the season.
+
 ```{python}
 # | warning: false
 
@@ -743,7 +812,7 @@ ggpointinterval(
 )
 ```
 
-The problem with this metric? Justin Tucker is represented as a replacement-level kicker or worse in 2018? Historically, Tucker has been one of the best kickers in the league going into the 2018 season. Pitching this metric and leaderboard in 2018 would have been difficult, and rightfully so.
+The problem with this metric? In 2018 Justin Tucker is represented as a replacement-level kicker - or worse. Yet historically, Tucker had been one of the most reliable kickers in the league going into the 2018 season. Pitching this metric and leaderboard during the season would have been difficult to justify, and rightfully so.
 
 #### 2016-2017 results
 
@@ -770,7 +839,7 @@ ggpointinterval(
 
 ```
 
-It isn't impossible, but it should be unlikely that he dropped from an outlier lead, to one of the worst in 6 weeks.
+It isn't impossible, but it should be highly unlikely that he dropped from an outlier lead, to one of the worst in 6 weeks.
 
 The problem with using this metric alone is that limited sample sizes can introduce a significant amount noise. Upon examining the dataset, there were multiple blocked field goals against Tucker. While outside the scope of this analysis, it's uncertain how much credit should be assigned to the kicker versus the blocking on the play for blocked kicks.
 
@@ -804,17 +873,18 @@ ggpointinterval(
 
 However, this approach is arbitrary as it requires manual intervention that doesn't provide a way to account for such events within the model itself, highlighting the need for a better solution.
 
+Another issue to consider are the fact that established veterans like Justin Tucker and Mason Crosby show some of the widest posterior distributions. Players with minimal experience like Tyler Davis and Ross Martin (each with 1 FG attempt) have tight estimates. This is counterintuitive from a Bayesian perspective. If a player has limited data, we should have less confidence in estimating their true ability. But with more data, we expect the model to move away from the prior and narrow in on a more certain estimate.
+
 ---
 
 
 ### Simulated FGOE
 
-The model allows us to extract each player's parameter distributions as well as distance effects, and apply it to simulated data. This enables what-if scenarios and projections beyond only observed data. We can establish expectations for what each kicker could make in this hypothetical world where they each attempt the same set of kicks.
+The model allows us to extract each player's parameter distributions as well as distance effects, and apply it to simulated data. This enables what-if scenarios and projections beyond only the observed data. We can establish expectations for what each kicker could make in this hypothetical world where they each attempt the same set of kicks.
 
 #### Standardized kick predictions
 
 I chose a linear interval of kicks from 25-60 yards. This decision is arbitrary, but prioritizes simplicity and represents the first step toward gaining organizational buy-in for the leaderboard.
-
 
 
 ```{python}
@@ -833,8 +903,19 @@ df_grid = (
     )
 )
 
-df_grid
+df_grid.drop(['distance_std'])
 
+```
+
+
+With the simulation of kicks, we can now look at **Simulated FGOE**. This operates at the scale of posterior sample draws, with each player having 4,000 simulations across a distribution of kicks. This method provides the ability to quantify uncertainty within the estimates and examine the range of potential outcomes, while addressing the sample size problem of a traditional FGOE.
+
+#### Plotting Simulated FGOE
+
+The plot below shows the posterior distributions of simulated FGOE. Compared to the traditional version, this metric is more stable with less noise, and it follows intuitive principles that make interpretation easier. Many players cluster around zero, roughly representing replacement level, while deviations in either direction are easy to interpret.
+
+```{python}
+#| warning: false
 df_fgoe = create_fgoe_table(df_grid)
 
 df_sfgoe = df_fgoe.group_by(["chain", "draw", "player_name", "player_id"]).agg(
@@ -848,22 +929,15 @@ ggpointinterval(
 )
 ```
 
-
-With the simulation of kicks, we can now look at **Simulated FGOE**. This operates at the scale of posterior sample draws, with each player having 4,000 simulations across a distribution of kicks. This method provides the ability to quantify uncertainty within the estimates and examine the range of potential outcomes, while addressing the sample size problem of a traditional FGOE.
-
-#### Plotting Simulated FGOE
-
-The plot below shows the posterior distributions of simulated FGOE. Compared to the traditional version, this metric is more stable and less noisy, and it follows intuitive principles that make interpretation easier. Many players cluster around zero, roughly representing replacement level, while deviations in either direction are easy to interpret.
-
-For example, Justin Tucker’s median rating falls between 1 and 4 field goals over expected, with a central estimate of approximately 2.5. That’s far more intuitive and communicable than saying _the player’s log-odds intercept increases by 0.2 to 0.8 after adjusting for distance_.
+For example, Justin Tucker’s median rating falls between 1 and 3 field goals over expected, with a central estimate of approximately 2. Even his low-end outcomes are better than most players median performance. That’s far more intuitive and communicable than saying _the player’s log-odds intercept increases by 0.2 to 0.9 after adjusting for distance_.
 
 
 #### Comparing output
 
-To compare traditional and simulated FGOE, we examine their posterior distributions. Simulated FGOE offers a more consistent and interpretable view of player performance. The distributions include credible intervals that reflect the uncertainty in player evaluation, ultimately making the metric more robust and reliable for assessing performance.
+To compare traditional and simulated FGOE, we examine the posterior distributions for each method. Simulated FGOE offers a more consistent and interpretable view of player performance. The distributions include credible intervals that reflect the uncertainty in player evaluation, ultimately making the metric more robust and reliable for assessing performance.
 
 ::: {.callout-note}
-The models aren't necesarily 1:1 comparisons of the same distribution of kicks, because with the traditional FGOE we are limited to the kicks that the kicker attempted. Simulated FGOE is applied to the same set of kicks for each kicker. It is more important to look directionally at each model. Easily shown is Justin Tucker is firmly at the top of the list, without having to adjust arbitrarily for blocked kicks.
+The models aren't necesarily 1:1 comparisons of the same distribution of kicks, because with the traditional FGOE we are limited to the kicks that the kicker actually attempted. Simulated FGOE is applied counterfactually to the same set of kicks for each kicker. It is more important to look directionally at each model. Easily shown is Justin Tucker is firmly at the top of the list, without having to arbitrarily adjust for blocked kicks.
 :::
 
 
@@ -933,7 +1007,7 @@ df_comparison_r = title_name(df_comparison_r)
 
 #### Which player would we prefer?
 
-With the model parameters and simulation, even if a kicker hasn't attempted a 60 yard kick - we can provide an estimate for what that might look like. Probability curves by distance can help visualize comparisons between players.
+With the model parameters and simulation, even if a kicker hasn't attempted a 60 yard kick - we can provide an estimate for what that might look like. This enables probability curves by distance which can help visualize comparisons between players.
 
 ```{python}
 # | code-fold: true
@@ -978,7 +1052,7 @@ plot_df = df_fgoe.filter(pl.col('player_name').is_in(['JUSTIN TUCKER', 'ROBERTO 
 
 ## Leaderboard
 
-The table below presents the generated leaderboard, showcasing the Player Id, Player Name, Rating (Simulated FGOE), and Rank for the top 10 and bottom 10 kickers evaluated by the model. The *Rank* column is in ascending order, where a lower rank indicates a better performance. The *Top 5* and *Top 10* columns indicates the percentage of simulations in which a player ranked among the top 5 and top 10 kickers, offering a probabilistic measure of their high-end outcomes.
+The table below represents the generated leaderboard, showcasing the Player Id, Player Name, Rating (Simulated FGOE), and Rank for the top 10 and bottom 10 kickers evaluated in the 2018 season. The *Rank* column is in ascending order, where a lower rank indicates a better performance. The *Top 5* and *Top 10* columns indicate the percentage of simulations in which a player ranked among the top 5 and top 10 kickers, offering a probabilistic measure of their high-end outcomes.
 
 ```{python}
 # | code-fold: true

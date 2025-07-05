@@ -307,7 +307,6 @@ df_skill |>
   arrange(-value)
 ```
 
-## THIS IS PROMISING
 
 ```{r}
 
